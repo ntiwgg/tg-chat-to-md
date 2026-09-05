@@ -50,7 +50,8 @@ def format_markdown(
     parts.append(f"# Чат: {chat_name}\n\n---\n")
 
     # Days must appear chronologically: Russian headers ("2 июля", "10 июля")
-    # do not sort lexicographically, so order groups by their parsed date.
+    # do not sort lexicographically, so order groups by their parsed date;
+    # groups whose date failed to parse fall to the end of the document.
     for date_key in sorted(by_date.keys(), key=lambda k: _day_sort_key(day_order, k)):
         parts.append(f"## {date_key}\n")
         for msg in by_date[date_key]:
@@ -240,11 +241,15 @@ def _parse_date_or_none(iso_string: str) -> datetime | None:
 
 
 def _day_sort_key(day_order: dict[str, datetime], date_key: str) -> tuple[bool, datetime | str]:
-    """Chronological sort key for day groups: real dates first, unparseable last."""
+    """Sort key for day groups: parsed dates first, unparseable groups last.
+
+    Parsed days yield (False, datetime) and sort first, ascending by date;
+    unparseable days yield (True, raw key) and sort after every parsed day.
+    """
     day = day_order.get(date_key)
     if day is None:
-        return (False, date_key)
-    return (True, day)
+        return (True, date_key)
+    return (False, day)
 
 
 def _date_key(msg: Message) -> str:
