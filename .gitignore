@@ -1,0 +1,26 @@
+# Environment & tooling
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.playwright-mcp/
+.omo/
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary working docs (must never be committed)
+/PLAN.md
+
+# Personal Telegram export data (private media — never commit)
+/ChatExport*/
+
+# Transcription caches (regenerable, may live anywhere next to exports)
+*_transcripts_cache.json
+
+# Generated outputs
+/chat.md
+/chat.md.bak_*
+/analysis*
+/analysis_notes/
