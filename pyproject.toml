@@ -10,6 +10,9 @@ dependencies = [
 [project.scripts]
 telegram-to-md = "telegram_to_md:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
 [tool.setuptools]
 py-modules = ["telegram_to_md", "merge_exports"]
 
