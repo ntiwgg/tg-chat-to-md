@@ -78,7 +78,6 @@ class Transcriber:
     Usage:
         t = Transcriber(model_size="medium", device="cuda")
         text = t.transcribe("voice.ogg")
-        t.transcribe_all(["a.ogg", "b.mp4"])
     """
 
     def __init__(
@@ -149,60 +148,7 @@ class Transcriber:
         return text
 
     # ------------------------------------------------------------------
-    def transcribe_all(self, filepaths: list[str | Path]) -> dict[str, str]:
-        """Transcribe a batch of files, using cache where possible."""
-        results: dict[str, str] = {}
-        for fp in filepaths:
-            results[str(fp)] = self.transcribe(fp)
-        return results
-
-    # ------------------------------------------------------------------
     def flush_cache(self) -> None:
         """Force-write cache to disk."""
         if self._cache_path:
             _write_cache(self._cache_path, self._cache)
-
-
-# ---------------------------------------------------------------------------
-# CPU-only parallel pool (multiprocessing)
-# ---------------------------------------------------------------------------
-def _worker_transcribe(args: tuple[str, str, str, str, int, int]) -> tuple[str, str]:
-    """Picklable worker for multiprocessing Pool."""
-    filepath, model_size, device, compute_type, beam_size, language = args  # noqa: F821 — args are unpacked
-    # Re-import inside worker (fresh process)
-    from faster_whisper import WhisperModel  # type: ignore[import-untyped]
-
-    model = WhisperModel(model_size, device=device, compute_type=compute_type)
-    segments, _info = model.transcribe(
-        filepath, language=language, beam_size=beam_size, vad_filter=True
-    )
-    text = " ".join(seg.text.strip() for seg in segments)
-    return filepath, text
-
-
-def transcribe_parallel_cpu(
-    filepaths: list[str],
-    model_size: str = "medium",
-    language: str = "ru",
-    beam_size: int = 5,
-    num_workers: int | None = None,
-) -> dict[str, str]:
-    """Transcribe files in parallel using multiple CPU processes.
-
-    Each worker loads its own model — high RAM usage but max throughput.
-    """
-    if not HAS_WHISPER:
-        raise RuntimeError("faster-whisper is not installed. Run: pip install faster-whisper")
-
-    workers = num_workers or max(1, mp.cpu_count() - 1)
-    compute_type = "int8"
-    device = "cpu"
-
-    tasks = [(fp, model_size, device, compute_type, beam_size, language) for fp in filepaths]
-
-    results: dict[str, str] = {}
-    with mp.Pool(processes=workers) as pool:
-        for filepath, text in pool.imap_unordered(_worker_transcribe, tasks):
-            results[filepath] = text
-
-    return results

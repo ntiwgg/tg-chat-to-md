@@ -3,15 +3,16 @@
 
 Usage:
     python telegram_to_md.py "ChatExport_2026-07-24 (1)/"
-    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --model medium --output chat.md
-    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --cpu --workers 8
+    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --model small --output chat.md
+    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --device cpu --model small
 
 Options:
-    --model        Whisper model size: tiny, base, small, medium, large-v3 (default: medium)
-    --device       cuda or cpu (default: cuda)
-    --output       Output markdown path (default: {export_dir}/chat.md)
+    --model        Whisper model size: tiny, base, small, medium, large-v3, turbo (default: medium)
+    --device       Compute device: cuda or cpu (default: cuda)
+    --output       Output markdown path (default: <export_dir>/chat.md)
     --no-cache     Disable transcript caching
-    --workers      Number of CPU workers when --cpu is used (default: cpu_count - 1)
+    --language     Language code for transcription (default: ru)
+    --beam-size    Whisper beam size (default: 5)
 """
 
 from __future__ import annotations
@@ -105,10 +106,6 @@ def main() -> None:
     parser.add_argument(
         "--no-cache", action="store_true",
         help="Disable transcript caching",
-    )
-    parser.add_argument(
-        "--workers", type=int, default=None,
-        help="Number of CPU workers when --device cpu (default: cpu_count - 1)",
     )
     parser.add_argument(
         "--language", default="ru",
