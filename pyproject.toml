@@ -10,5 +10,8 @@ dependencies = [
 [project.scripts]
 telegram-to-md = "telegram_to_md:main"
 
+[tool.setuptools]
+py-modules = ["telegram_to_md", "merge_exports"]
+
 [tool.setuptools.packages.find]
 include = ["src*"]
