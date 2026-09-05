@@ -104,12 +104,17 @@ def _parse_location(raw: dict[str, Any] | None) -> LocationInfo | None:
 
 
 def _resolve_file(file_path: str | None, export_root: Path) -> str | None:
-    """Resolve a relative media file path to absolute; return None for placeholders."""
+    """Resolve a media file path to a canonical absolute path; None for placeholders.
+
+    The returned string doubles as the transcription cache key, so it must not
+    depend on the CWD or on how export_dir was typed on the CLI. .resolve()
+    canonicalizes the joined path regardless of path form or current directory.
+    """
     if file_path is None:
         return None
     if file_path.startswith("(File not included") or file_path.startswith("(File unavailable"):
         return None
-    resolved = export_root / file_path
+    resolved = (export_root / file_path).resolve()
     if resolved.exists():
         return str(resolved)
     return None  # file referenced but doesn't exist on disk
