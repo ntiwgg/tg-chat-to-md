@@ -203,6 +203,7 @@ def main() -> None:
     # Phase 3: Transcribe
     # ------------------------------------------------------------------
     transcripts: dict[str, str] = {}
+    failures: list[str] = []
 
     if to_transcribe:
         cache_dir = None if args.no_cache else export_dir
@@ -243,7 +244,6 @@ def main() -> None:
 
         from tqdm import tqdm  # type: ignore[import-untyped]
 
-        failures: list[str] = []
         try:
             for i, fp in enumerate(tqdm(to_transcribe, desc="Транскрибация", unit="файл")):
                 try:
@@ -292,6 +292,12 @@ def main() -> None:
 
     total = t5 - t0
     print(f"\n✅ Завершено за {total:.1f}с ({total/60:.1f} мин)")
+
+    # Some files never made it into transcripts: the artifact is written but
+    # the run was incomplete. Exit non-zero so scripts can tell a partial run
+    # from a fully successful one (a clean run falls through to exit 0).
+    if failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

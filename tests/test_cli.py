@@ -17,7 +17,8 @@ Hermetic: no audio decoding, no model load, no network. Covers:
   - a no-media export never constructs a Transcriber and still writes md;
   - a failing model load exits 1 with an actionable hint, not a traceback;
   - a per-file transcription failure is skipped with a warning and a summary
-    line, and the run still produces Markdown.
+    line, the Markdown artifact is still produced, and the run exits 1 — a
+    scriptable signal that the run was incomplete; full success exits 0.
 """
 
 import json
@@ -231,7 +232,8 @@ def test_model_load_failure_is_friendly(tmp_path, monkeypatch, capsys) -> None:
 
 
 # ---------------------------------------------------------------------------
-# per-file tolerance: one bad file skips, rest transcribe, summary printed
+# per-file tolerance: one bad file skips, rest transcribe, summary printed,
+# the artifact is still written, and the run exits 1 (partial-run signal)
 # ---------------------------------------------------------------------------
 def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> None:
     import telegram_to_md as cli
@@ -259,8 +261,12 @@ def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> 
 
     monkeypatch.setattr(cli, "Transcriber", _FakeTranscriber)
 
-    cli.main()  # must not raise and must not sys.exit
+    # Partial run: exit 1 flags the incomplete run — but only AFTER the
+    # Markdown artifact was written (a scriptable signal, not an abort).
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
 
+    assert exc_info.value.code == 1
     md = output_path.read_text(encoding="utf-8")
     assert "> *Расшифровка:* текст второго файла" in md
     assert "> *(расшифровка недоступна)*" in md  # the failed file has no entry
@@ -292,7 +298,7 @@ def test_per_file_success_writes_no_failure_summary(tmp_path, monkeypatch, capsy
 
     monkeypatch.setattr(cli, "Transcriber", _FakeTranscriber)
 
-    cli.main()
+    cli.main()  # no SystemExit: a fully successful run exits 0
 
     md = output_path.read_text(encoding="utf-8")
     assert "> *Расшифровка:* единственная расшифровка" in md
