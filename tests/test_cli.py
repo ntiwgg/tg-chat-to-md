@@ -1,21 +1,25 @@
-"""Unit tests for the CLI surface and dead CPU-code removal.
+"""Unit tests for the CLI surface and orchestration.
 
 Hermetic: no audio decoding, no model load, no network. Covers:
   - the real CLI parser accepts --device cpu;
-  - the removed --workers flag and the never-existing --cpu flag are rejected
-    with an argparse error (exit code 2), not silently accepted;
+  - removed/dead flags (--workers, --cpu) and invalid --model/--device
+    choices are rejected with an argparse error (exit code 2);
   - `telegram_to_md.py --help` exits 0 and advertises --device without
     mentioning --workers or --cpu;
-  - src.transcriber keeps its public API (transcribe, flush_cache, HAS_WHISPER)
-    and no longer defines the removed multiprocessing helpers;
+  - src.transcriber imports cleanly and keeps its CLI seam (transcribe,
+    flush_cache);
   - --version exits 0 with a semver-ish string;
   - a missing result.json exits 1 with a friendly message, not a traceback;
+  - --no-cache wiring: cache_dir=None vs the export dir, one transcribe call
+    per file (recording stub, in-process main);
+  - flush cadence via CACHE_FLUSH_EVERY (see below);
+  - KeyboardInterrupt durability: cache flushed, exit 1, no output written;
+  - a no-media export never constructs a Transcriber and still writes md;
   - a failing model load exits 1 with an actionable hint, not a traceback;
   - a per-file transcription failure is skipped with a warning and a summary
     line, and the run still produces Markdown.
 """
 
-import inspect
 import json
 import re
 import subprocess
@@ -96,6 +100,17 @@ def test_cpu_flag_is_rejected() -> None:
     assert "unrecognized arguments: --cpu" in proc.stderr
 
 
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [("--model", "bogus"), ("--device", "bogus")],
+)
+def test_invalid_choice_is_rejected_with_exit_2(flag, value) -> None:
+    proc = _run_cli(GHOST_EXPORT, flag, value)
+
+    assert proc.returncode == 2
+    assert "invalid choice" in proc.stderr
+
+
 def test_help_exits_zero_and_describes_real_flags() -> None:
     proc = _run_cli("--help")
 
@@ -107,24 +122,14 @@ def test_help_exits_zero_and_describes_real_flags() -> None:
 
 
 # ---------------------------------------------------------------------------
-# src.transcriber: dead multiprocessing API removed, public API intact
+# src.transcriber: import smoke + the CLI duck-contract seam
 # ---------------------------------------------------------------------------
-def test_transcriber_no_longer_has_removed_names() -> None:
-    assert not hasattr(transcriber_mod, "transcribe_all")
-    assert not hasattr(transcriber_mod, "transcribe_parallel_cpu")
-    assert not hasattr(transcriber_mod, "_worker_transcribe")
-    assert not hasattr(transcriber_mod.Transcriber, "transcribe_all")
-
-    source = inspect.getsource(transcriber_mod)
-    assert "transcribe_all" not in source
-    assert "transcribe_parallel_cpu" not in source
-    assert "_worker_transcribe" not in source
-    assert "CPU-only parallel pool" not in source
-
-
-def test_transcriber_public_api_stays_intact() -> None:
-    assert hasattr(transcriber_mod, "HAS_WHISPER")
-    assert isinstance(transcriber_mod.HAS_WHISPER, bool)
+def test_transcriber_import_smoke_and_cli_seam() -> None:
+    """The import at the top of this file is the smoke check (the module must
+    load without faster-whisper installed — every subprocess CLI test below
+    relies on it). The class-level callable check documents the seam the
+    in-process tests stub: telegram_to_md.main drives instances through
+    exactly transcribe(filepath) and flush_cache()."""
     assert callable(transcriber_mod.Transcriber.transcribe)
     assert callable(transcriber_mod.Transcriber.flush_cache)
 
@@ -153,6 +158,8 @@ def test_missing_result_json_is_friendly(tmp_path) -> None:
     assert "result.json" in proc.stderr
     assert "Traceback" not in proc.stderr
     assert "Traceback" not in proc.stdout
+    # The actionable hint survives: tell the user which folder shape to pass.
+    assert "Укажите путь к папке экспорта" in proc.stderr
 
 
 def test_export_dir_check_is_friendly() -> None:
@@ -329,3 +336,147 @@ def test_cache_flushes_every_n_files_and_on_exit(tmp_path, monkeypatch) -> None:
     md = output_path.read_text(encoding="utf-8")
     for i in range(1, n_files + 1):
         assert f"> *Расшифровка:* текст {i}" in md
+
+
+def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
+    tmp_path, monkeypatch
+) -> None:
+    """--no-cache must reach Transcriber as cache_dir=None; without the flag
+    the export dir is the cache dir. Transcribe runs exactly once per file."""
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=2)
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+    instances: list = []
+
+    class _WiringTranscriber:
+        def __init__(self, *args, **kwargs) -> None:
+            self.cache_dir = kwargs.get("cache_dir")
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+            self.calls = 0
+            instances.append(self)
+
+        def transcribe(self, fp: str) -> str:
+            self.calls += 1
+            return f"текст {self.calls}"
+
+        def flush_cache(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "Transcriber", _WiringTranscriber)
+
+    # Default: the export directory is the cache directory.
+    with_cache = tmp_path / "with_cache.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(with_cache)],
+    )
+    cli.main()
+    assert instances[-1].cache_dir == export_dir
+
+    # --no-cache: cache_dir=None, nothing may be read or written on disk.
+    no_cache = tmp_path / "no_cache.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--no-cache", "--output", str(no_cache)],
+    )
+    cli.main()
+    assert instances[-1].cache_dir is None
+
+    for instance in instances:
+        assert instance.calls == 2  # one transcribe call per media file
+
+
+def test_keyboard_interrupt_flushes_cache_and_exits_1(tmp_path, monkeypatch) -> None:
+    """Ctrl-C mid-run must persist the partial cache (durability) and exit 1
+    without writing the markdown."""
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=3)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _InterruptingTranscriber:
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+            self.transcribed = 0
+            self.flushes = 0
+
+        def transcribe(self, fp: str) -> str:
+            self.transcribed += 1
+            if self.transcribed == 2:
+                raise KeyboardInterrupt
+            return "текст"
+
+        def flush_cache(self) -> None:
+            self.flushes += 1
+
+    stub = _InterruptingTranscriber()
+    monkeypatch.setattr(cli, "Transcriber", lambda *a, **kw: stub)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 1
+    assert stub.transcribed == 2  # interrupted on the second file
+    # Partial progress was persisted before exit (the interrupt handler flushes;
+    # sys.exit then still passes through the finally flush — both are benign,
+    # idempotent writes, so we assert durability, not an exact flush count).
+    assert stub.flushes >= 1
+    assert not output_path.exists()  # no markdown written after the abort
+
+
+def test_no_media_export_never_constructs_transcriber(tmp_path, monkeypatch, capsys) -> None:
+    """A text-only export skips model loading entirely (no Transcriber
+    construction), prints the no-media notice, exits 0, and still writes the
+    markdown."""
+    import telegram_to_md as cli
+
+    export_dir = tmp_path / "ChatExport_text_only"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "name": "Тест",
+                "id": 1,
+                "messages": [
+                    {
+                        "id": 1,
+                        "type": "message",
+                        "date": "2026-07-24T10:00:00",
+                        "date_unixtime": "0",
+                        "from": "Автор",
+                        "text": "Только текст",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+
+    def _bomb(*args, **kwargs):
+        raise AssertionError("модель не должна загружаться без медиа")
+
+    monkeypatch.setattr(cli, "Transcriber", _bomb)
+
+    cli.main()  # no SystemExit: exit 0
+
+    assert "Нет файлов для расшифровки" in capsys.readouterr().out
+    md = output_path.read_text(encoding="utf-8")
+    assert "Только текст" in md
