@@ -1,65 +1,41 @@
 # tg-chat-to-md
 
-Turn a Telegram Desktop chat export into one readable, chronological Markdown file — and transcribe every voice message and round video to text with faster-whisper, locally, no cloud.
+Конвертер экспорта Telegram в единый Markdown-файл с локальной транскрибацией голосовых сообщений.
 
-<!-- REPLACE USER with your GitHub username after pushing -->
-[![CI](https://github.com/USER/tg-chat-to-md/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/tg-chat-to-md/actions/workflows/ci.yml)
+<!-- Badges are live: repo is github.com/ntiwgg/tg-chat-to-md -->
+[![CI](https://github.com/ntiwgg/tg-chat-to-md/actions/workflows/ci.yml/badge.svg)](https://github.com/ntiwgg/tg-chat-to-md/actions/workflows/ci.yml)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## The problem
+## Зачем это нужно
 
-Telegram's built-in export is built for backup, not for reading. You get a folder of month-by-month HTML files plus media: voice notes as `.ogg`, round videos as `.mp4`. Open it later and you're clicking through fragmented pages where the most personal part of the conversation — the voice — is invisible. You can't read it end-to-end, and you can't search it.
+Экспорт Telegram Desktop предназначен для резервного копирования, а не для чтения: это набор HTML-файлов по месяцам плюс медиа — голосовые сообщения (`.ogg`), видеокружки (`.mp4`), фото. Перечитывать такой архив неудобно: сообщения разбиты по страницам, сквозного поиска нет, а голосовая часть переписки в текстовом виде вообще недоступна.
 
-This tool closes that gap: point it at an export folder (`result.json` + media) and it produces **one** Markdown document — chronological, readable in any editor, greppable — where voice messages and round videos appear as transcribed text right where they were said.
+Инструмент собирает экспорт в один хронологический Markdown-документ, который открывается в любом редакторе и ищется обычным поиском по файлу. Голосовые сообщения и видеокружки распознаются локально и появляются в документе как текст — на своих местах в переписке.
 
-## Proof, first
+## Что умеет
 
-This is real output from the committed demo export (`examples/sample_export/`), a synthetic Russian chat with no personal data:
+- Один самодостаточный Markdown-файл: сообщения сгруппированы по дням с русскими заголовками (`## 4 сентября 2026`) и отсортированы хронологически, а не лексикографически.
+- Транскрибация голосовых сообщений и видеокружков через faster-whisper: GPU-режим по умолчанию (батчинг, `float16`) или CPU-режим (`int8` + VAD-фильтр).
+- Кэш расшифровок: переживает прерывание (Ctrl-C), автоматически мигрирует старые форматы кэша и не зависит от рабочей директории, из которой запущена команда.
+- Ответы, пересылки, реакции, редактирования и служебные сообщения: цитаты ответов с автором и временем, отметки «переслано от», реакции с количеством, пометки «(отредактировано …)», строки о звонках и закреплённых сообщениях.
+- Корректное экранирование Markdown: `*`, `_`, `` ` ``, `[`, `]`, `\` в тексте пользователей не ломают документ; сущности Telegram (жирный, курсив, ссылки, упоминания, хештеги, номера телефонов) отображаются разметкой.
+- Устойчивость к отсутствующим медиа: сообщения с заглушками Telegram `(File not included…)` / `(File unavailable…)` и файлами, которых нет на диске, остаются в документе — расшифровка просто пропускается.
+- `tg-chat-merge`: склейка пересекающихся частичных экспортов одного чата в один хронологический документ с дедупликацией по id сообщений и объединением кэшей.
+- Полностью офлайн: работает только с файлами экспорта на диске, ничего никуда не отправляет.
 
-```markdown
-## 4 сентября 2026
+## Установка
 
-**09:03** | **Борис**: Я за. Только давай **без опозданий** — в прошлый раз ждали полчаса.
-
-> ↩ В ответ на **Аня** (09:01):
->> Всем привет! Планируем субботний пикник. …
-**09:21** | **Аня** (0:14)
-**🎤 Голосовое сообщение:**
-> *(расшифровка недоступна)*    ← demo ships no audio; real exports show Whisper text here
-```
-
-Bold entities survive, replies become quote blocks, voice messages carry duration + transcript. Run it yourself:
+Требуется Python 3.11 или новее.
 
 ```bash
-pip install .                    # once — exposes the `tg-chat-to-md` and `tg-chat-merge` commands
-tg-chat-to-md examples/sample_export
+pip install .                    # из корня репозитория; устанавливает команды tg-chat-to-md и tg-chat-merge
+pip install -e ".[dev]"          # то же + pytest, pytest-cov, hypothesis, ruff, mypy
 ```
 
-That regenerates the file above in under a second: no model download, no network, no GPU. It exercises the real parse → transcribe → format pipeline, just with nothing to transcribe.
+Первая реальная транскрибация скачивает выбранные веса Whisper через faster-whisper (кэш Hugging Face) — после этого распознавание работает офлайн. Демо-данные из репозитория ничего не скачивают.
 
-## Features
-
-- **One self-contained Markdown file** — messages grouped under Russian day headers (`## 4 сентября 2026`), sorted chronologically, not lexicographically.
-- **faster-whisper transcription** of voice messages and round videos — GPU by default via a batched inference pipeline (`batch_size=16`, `float16`), CPU mode with `int8` + VAD filter.
-- **Durable transcript cache** — survive Ctrl-C, migrate old cache formats, and never re-transcribe what you already paid for (details below).
-- **Replies, forwards, reactions, edits, service messages** — reply quotes with author/time/preview (including a transcript excerpt when the reply target is a voice note), forwarded-from markers, reaction counts with names, "(отредактировано …)" timestamps, and system lines for calls (completed / missed / rejected) and pinned messages.
-- **Proper Markdown escaping** — `*`, `_`, `` ` ``, `[`, `]` and `\` in user text never break the document; Telegram entities (bold, italic, mentions, hashtags, phone numbers, links) map to Markdown.
-- **Robust to missing media** — Telegram's `(File not included…)` / `(File unavailable…)` placeholders and files absent from disk keep their message in the output; transcription is simply skipped.
-- **`tg-chat-merge`** — glue overlapping partial exports of the same chat (e.g. from different dates) into one chronological document, deduplicated by message id, with caches combined.
-
-## Install
-
-Python 3.11+.
-
-```bash
-pip install .                    # from the repo root; installs the `tg-chat-to-md` command
-pip install -e ".[dev]"          # same + pytest, pytest-cov, ruff, mypy
-```
-
-The first real transcription downloads the chosen Whisper weights via faster-whisper (Hugging Face cache) — after that, transcription works offline. The demo export never triggers a download.
-
-## Usage
+## Использование
 
 ```bash
 tg-chat-to-md "ChatExport_2026-07-24 (1)/"
@@ -67,91 +43,102 @@ tg-chat-to-md "ChatExport_2026-07-24 (1)/" --model small --output chat.md
 tg-chat-to-md "ChatExport_2026-07-24 (1)/" --device cpu
 ```
 
-| Argument | Meaning | Default |
+| Аргумент | Назначение | По умолчанию |
 |---|---|---|
-| `export_dir` (positional) | Telegram Desktop export folder containing `result.json` | required |
-| `--model` | Whisper model: `tiny`, `base`, `small`, `medium`, `large-v3`, `large-v3-turbo`, `turbo` | `medium` |
-| `--device` | `cuda` or `cpu` | `cuda` |
-| `--output` | Output Markdown path | `<export_dir>/chat.md` |
-| `--no-cache` | Skip reading *and* writing the transcript cache | off |
-| `--language` | Transcription language code | `ru` |
-| `--beam-size` | Whisper beam-search width | `5` |
+| `export_dir` (позиционный) | Папка экспорта Telegram Desktop с файлом `result.json` | обязателен |
+| `--model` | Модель Whisper: `tiny`, `base`, `small`, `medium`, `large-v3`, `large-v3-turbo`, `turbo` | `medium` |
+| `--device` | Устройство вычислений: `cuda` или `cpu` | `cuda` |
+| `--output` | Путь к выходному Markdown-файлу | `<export_dir>/chat.md` |
+| `--no-cache` | Отключить чтение и запись кэша расшифровок | выключен |
+| `--language` | Код языка для транскрибации | `ru` |
+| `--beam-size` | Ширина beam-search при распознавании | `5` |
+| `--version` | Показать версию и выйти | — |
 
-There is deliberately **no `--workers` and no `--cpu` flag** — they were removed in a refactor. CPU mode is chosen with `--device cpu`; parallelism lives inside ctranslate2 (`cpu_threads` defaults to half your cores, `num_workers=2`). On CUDA, pip-installed NVIDIA libraries are preloaded automatically so ctranslate2 can find them.
+Без установки та же команда запускается как `python -m tg_chat_to_md "ChatExport_2026-07-24 (1)/"`.
 
-Merging overlapping exports of one chat is the `tg-chat-merge` command (the same parse → merge-caches → format pipeline, no transcription):
+Демо без модели и сети:
+
+```bash
+tg-chat-to-md examples/sample_export
+```
+
+Запуск пересоздаёт файл `examples/sample_export/chat.md` менее чем за секунду и проходит весь конвейер «разбор → транскрибация → форматирование» — просто транскрибировать в демо нечего.
+
+Слияние пересекающихся экспортов одного чата выполняет команда `tg-chat-merge` (тот же конвейер «разбор → объединение кэшей → форматирование», без транскрибации):
 
 ```bash
 tg-chat-merge --old "ChatExport_2026-07-24 (1)" \
               --new "ChatExport_2026-08-10 (1)" \
-              --output chat.md          # repeat --extra "…" for further exports
+              --output chat.md          # повторяйте --extra "…" для остальных экспортов
 ```
 
-Unpackaged, either tool runs through its module: `python -m tg_chat_to_md` for the main CLI and `python -m tg_chat_to_md.merge` for the merge helper.
+Флаги: `--old` и `--new` обязательны (порядок задаёт приоритет — при совпадении id сообщения выигрывает более ранний экспорт), `--extra` может повторяться и идёт после `--new`, `--output` по умолчанию `chat.md`. Без установки: `python -m tg_chat_to_md.merge --old … --new …`.
 
-## How it works
+## Демо-данные
 
-**1. Parse.** `tg_chat_to_md/parser.py` reads `result.json` into typed `Message` dataclasses (`tg_chat_to_md/models.py`). Media paths are resolved to canonical absolute paths — the same key doubles as the transcription-cache key, so results never depend on where you ran the command from.
+Каталог `examples/sample_export/` содержит синтетический русскоязычный чат «Пикник у озера» без личных данных и уже сгенерированный `chat.md`. Он нужен, чтобы проверить работу инструмента без реального экспорта, скачивания моделей и сети.
 
-**2. Transcribe.** The CLI collects every voice message and round video, loads the Whisper model once, and transcribes each file — skipping cache hits. Progress goes through tqdm; a Ctrl-C flushes the cache so hours of GPU work are never lost.
+## Как это работает
 
-**3. Format.** `tg_chat_to_md/formatter.py` renders messages to Markdown: day groups with Russian headers in true chronological order, reply quote blocks, media markers, reactions, edits, service messages. One file is written to `<export_dir>/chat.md` (or your `--output`).
+Конвейер состоит из трёх шагов. `parser.py` читает `result.json` в типизированные структуры сообщений (`models.py`) и приводит пути к медиа к каноническому виду. `transcriber.py` загружает модель Whisper один раз на запуск и распознаёт все голосовые сообщения и видеокружки, пропуская файлы, уже попавшие в кэш. `formatter.py` собирает Markdown: группы по дням с русскими заголовками, цитаты ответов, пометки медиа, реакции, правки и служебные строки — итоговый файл пишется рядом с экспортом (или по пути из `--output`).
 
-## The transcript cache
+## Кэш расшифровок
 
-Stored next to the export as `<export_dir>/_transcripts_cache.json`:
+Хранится рядом с экспортом: `<export_dir>/_transcripts_cache.json`.
 
-- **Keys are canonical absolute paths** (via `Path.resolve()`), so running from a different directory, with `./` prefixes, or with absolute paths always hits the same cache.
-- **Moving the export folder invalidates the cache** — keys embed the folder's absolute location, so expect a one-time re-transcription after a relocation.
-- **Legacy caches migrate automatically.** Old relative keys (`ChatExport_x/voice_messages/audio.ogg`) are re-matched to files on disk and re-keyed; entries matching nothing are dropped (they'd be re-transcribed anyway).
-- **Writes are batched** — every 50 files, on clean finish, and on Ctrl-C — so an interrupted run keeps everything already transcribed.
-- `--no-cache` turns the whole mechanism off.
+- Ключи кэша — канонические абсолютные пути к медиафайлам (через `Path.resolve()`), поэтому запуск из другой директории, с префиксом `./` или с абсолютными путями всегда попадает в один и тот же кэш.
+- Перенос папки экспорта обесценивает кэш: ключи содержат её абсолютное расположение, так что после переезда потребуется одноразовая повторная транскрибация.
+- Кэши старых форматов мигрируют автоматически: относительные ключи (`ChatExport_x/voice_messages/audio.ogg`) сопоставляются с файлами на диске и перекодируются; записи без соответствия отбрасываются (их файлы всё равно пришлось бы расшифровывать заново).
+- Запись пакетная: каждые 50 файлов, при чистом завершении и по Ctrl-C — прерванный запуск сохраняет уже готовые расшифровки.
+- Флаг `--no-cache` отключает механизм целиком.
 
-## Project layout
+## Ограничения
 
-```
-tg_chat_to_md/            the package (import name: tg_chat_to_md)
-  cli.py                  CLI entry point: args, Parse → Transcribe → Format, cache flushing
-  __main__.py             enables `python -m tg_chat_to_md`
-  merge.py                merge overlapping exports of one chat; dedup by id; combine caches
-  parser.py               result.json → Message objects; canonical media path resolution
-  models.py               dataclasses: Message, TextEntity, Reaction, ReactionRecent, LocationInfo
-  transcriber.py          faster-whisper GPU/CPU transcription; cache load/migrate/flush
-  formatter.py            Message → Markdown: day groups, replies, service messages, entities
-  cache.py                shared transcript-cache I/O: read/write/migrate (atomic, per-export keys)
-examples/sample_export/   synthetic demo export + its generated chat.md (privacy-safe)
-tests/                    210 hermetic tests — no audio, no model, no network
-```
+- Форматирование одностороннее: на выходе «снимок» переписки без якорей на отдельные сообщения; обратной конвертации в Telegram нет.
+- Whisper может галлюцинировать на тишине и шуме. VAD-фильтр применяется в CPU-режиме; в GPU-конвейере VAD не используется (ограничение faster-whisper) — это компромисс в пользу скорости.
+- Без GPU транскрибация больших чатов занимает заметное время. Автоматического переключения CUDA→CPU нет: если модель не загрузилась на `cuda`, запуск завершится с кодом 1 и подсказкой — повторите с `--device cpu`.
+- Перенос папки экспорта обесценивает кэш (абсолютные ключи) и означает повторную транскрибацию.
+- `tg-chat-merge` объединяет кэши, но не заполняет пробелы: файлы, отсутствующие во всех исходных экспортах, попадают в статистику и остаются без расшифровки (повторной транскрибации нет).
+- Интерфейс на русском: заголовки дней используют русские названия месяцев, вывод CLI — русский. Содержимое чатов не меняется, но локализации инструмента нет.
 
-Console scripts installed from the package: `tg-chat-to-md` (cli.py) and `tg-chat-merge` (merge.py).
+## Приватность
 
-## Development
+Реальные экспорты Telegram содержат личные разговоры. Файл `.gitignore` исключает каталоги `ChatExport*/` и файлы `*_transcripts_cache.json`; в репозитории — только синтетические демо-данные. Держите свои экспорты вне git и учитывайте, что расшифровки лежат открытым текстом рядом с экспортом. Вся обработка выполняется локально на вашей машине.
+
+## Разработка
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/          # 210 tests, hermetic: model & decoding are stubbed
-.venv/bin/python -m pytest --cov           # coverage gate: fail_under 95% on tg_chat_to_md
+.venv/bin/python -m pytest tests/          # 210 тестов, герметичные: без аудио, моделей и сети
+.venv/bin/python -m pytest --cov           # порог покрытия: fail_under 95% по пакету tg_chat_to_md
 .venv/bin/ruff check .
-.venv/bin/mypy                             # strict config from pyproject.toml
+.venv/bin/mypy                             # строгий режим из pyproject.toml
 ```
 
-The `.[dev]` extra installs pytest, ruff, mypy, pytest-cov, and Hypothesis. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["tg_chat_to_md"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%. Property tests (day-order sorting, cache-key migration) and one-shot mutmut audits (last pass: 768/768 mutants killed) are described in docs/DESIGN.md.
+Дополнительная зависимость `.[dev]` ставит pytest, pytest-cov, hypothesis, ruff и mypy. Правила линтера и типов, а также порог покрытия (`[tool.coverage.run] source = ["tg_chat_to_md"]`, `fail_under = 95`) заданы в `pyproject.toml`. Свойства (порядок сортировки по дням, миграция ключей кэша) проверяются property-тестами Hypothesis; периодические мутационные проверки выполняются mutmut (последний прогон: 768/768 мутантов убито). Подробности — в `docs/DESIGN.md`.
 
-Note: this project was developed with active use of an AI assistant (the deepseek-v4-flash model).
+Проект разрабатывался с активным использованием ИИ-ассистента (модель deepseek-v4-flash).
 
-## Limitations, honestly
+## Структура проекта
 
-- **The document chrome is Russian-first**: day headers use Russian month names and console output is in Russian. Chat content is untouched, but the tool is not localized.
-- **Whisper can hallucinate** on silence or noise. A VAD filter mitigates this on the CPU path; the GPU batched pipeline currently doesn't apply VAD (a faster-whisper limitation), which is a trade-off for speed.
-- **No automatic CUDA→CPU fallback** — if model init fails on CUDA the run stops with exit code 1 and a hint; retry with `--device cpu`.
-- **The output is a snapshot**: no per-message anchors/permalink ids — search the file instead. It is one-way; don't expect to round-trip back into Telegram.
-- **GPU is the default device** and recommended for large chats (`--device cpu` works but is slower). The `medium` default is a reasonable speed/quality midpoint — pick `small` for speed, `large-v3` for quality.
-- **`tg-chat-merge` combines caches, it doesn't fill them** — files missing from every source export are reported in the statistics and stay without transcripts (there is no re-transcription pass).
+```
+tg_chat_to_md/            пакет (имя импорта: tg_chat_to_md)
+  cli.py                  CLI: аргументы, конвейер «разбор → транскрибация → формат», запись кэша
+  __main__.py             включает запуск `python -m tg_chat_to_md`
+  merge.py                слияние экспортов одного чата; дедупликация по id; объединение кэшей
+  parser.py               result.json → объекты Message; нормализация путей к медиа
+  models.py               dataclasses: Message, TextEntity, Reaction, ReactionRecent, LocationInfo
+  transcriber.py          транскрибация faster-whisper (GPU/CPU); чтение/миграция/запись кэша
+  formatter.py            Message → Markdown: дни, ответы, служебные сообщения, сущности
+  cache.py                общий ввод-вывод кэша: чтение/запись/миграция (атомарно)
+examples/sample_export/   синтетический демо-экспорт и его сгенерированный chat.md
+tests/                    210 герметичных тестов — без аудио, моделей и сети
+docs/DESIGN.md            архитектурные решения и стратегия тестирования
+CHANGELOG.md              история изменений (Keep a Changelog)
+```
 
-## Privacy
+Из пакета устанавливаются две консольные команды: `tg-chat-to-md` (cli.py) и `tg-chat-merge` (merge.py).
 
-Real Telegram exports contain private conversations. The repo's `.gitignore` excludes `ChatExport*/` folders and `*_transcripts_cache.json`, and the committed `examples/sample_export/` is entirely synthetic. Keep your own exports out of git — and remember transcripts sit in plain text next to the export.
+## Лицензия
 
-## License
-
-[MIT](LICENSE). Built with [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and [tqdm](https://github.com/tqdm/tqdm) — all processing happens on your machine, nothing is uploaded anywhere.
+[MIT](LICENSE). Проект использует [faster-whisper](https://github.com/SYSTRAN/faster-whisper) и [tqdm](https://github.com/tqdm/tqdm); вся обработка выполняется на вашей машине, ничего не отправляется в сеть.
