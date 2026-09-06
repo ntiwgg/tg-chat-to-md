@@ -58,14 +58,17 @@ class Message:
     from_name: str | None = None
     from_id: str | None = None
 
-    # Content — can be str or list[str | dict] (when format entities are present)
+    # Content — raw export shape: a str, or a list of str/dict segments when
+    # format entities are present. Segment dicts may carry a null "text" in
+    # real exports: the parser coalesces text_entities to str at the parse
+    # boundary, and has_text/plain_text coalesce nulls in the raw text too.
     text: str | list[Any] | None = None
     text_entities: list[TextEntity] = field(default_factory=list)
 
     # -------------------- media --------------------
     # media kind: voice_message | video_message | sticker | video_file | animation
     media_type: str | None = None
-    file: str | None = None  # relative path or "(File not included...)"
+    file: str | None = None  # canonical absolute path (== cache key) or None when media is missing
     file_name: str | None = None
     file_size: int | None = None
     mime_type: str | None = None

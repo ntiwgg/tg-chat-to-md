@@ -25,12 +25,13 @@ Nothing yet
 - GitHub Actions CI on Python 3.11–3.14: ruff, mypy, pytest with a 95% coverage gate.
 - `--version` flag backed by `importlib.metadata` (falls back to `0.0.0.dev0`).
 - Atomic cache writes (temp file + `os.replace`) so interrupted runs never corrupt the cache.
-- Per-file transcription failure tolerance with an end-of-run summary (exit 1, no traceback).
+- Per-file transcription failure tolerance with an end-of-run summary (no traceback; the artifact is still written).
 - Docs: English README case study and `docs/DESIGN.md` with architecture, decisions, and the testing strategy.
 
 ### Changed
 
 - Cache writes batched every 50 files plus on clean exit and Ctrl-C, instead of after every file.
+- Partial transcription failures now exit with code 1; the Markdown artifact is still written, but scripts can detect that the run was incomplete.
 - Cache keys canonicalized via `Path.resolve()` — results no longer depend on the working directory.
 - Python floor widened from 3.14 to 3.11 (ruff/mypy targets, CI matrix, and README updated to match).
 - README rewritten from scratch as an English case study.

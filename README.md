@@ -92,6 +92,7 @@ There is deliberately **no `--workers` and no `--cpu` flag** — they were remov
 Stored next to the export as `<export_dir>/_transcripts_cache.json`:
 
 - **Keys are canonical absolute paths** (via `Path.resolve()`), so running from a different directory, with `./` prefixes, or with absolute paths always hits the same cache.
+- **Moving the export folder invalidates the cache** — keys embed the folder's absolute location, so expect a one-time re-transcription after a relocation.
 - **Legacy caches migrate automatically.** Old relative keys (`ChatExport_x/voice_messages/audio.ogg`) are re-matched to files on disk and re-keyed; entries matching nothing are dropped (they'd be re-transcribed anyway).
 - **Writes are batched** — every 50 files, on clean finish, and on Ctrl-C — so an interrupted run keeps everything already transcribed.
 - `--no-cache` turns the whole mechanism off.
@@ -106,14 +107,14 @@ src/transcriber.py       faster-whisper GPU/CPU transcription; cache load/migrat
 src/formatter.py         Message → Markdown: day groups, replies, service messages, entities
 merge_exports.py         merge overlapping exports of one chat; dedup by id; combine caches
 examples/sample_export/  synthetic demo export + its generated chat.md (privacy-safe)
-tests/                   207 hermetic tests — no audio, no model, no network
+tests/                   210 hermetic tests — no audio, no model, no network
 ```
 
 ## Development
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/          # 207 tests, hermetic: model & decoding are stubbed
+.venv/bin/python -m pytest tests/          # 210 tests, hermetic: model & decoding are stubbed
 .venv/bin/python -m pytest --cov           # coverage gate: fail_under 95% on src, per pyproject.toml
 .venv/bin/ruff check .
 .venv/bin/mypy src telegram_to_md.py merge_exports.py
@@ -127,8 +128,10 @@ Note: this project was developed with active use of an AI assistant (the deepsee
 
 - **The document chrome is Russian-first**: day headers use Russian month names and console output is in Russian. Chat content is untouched, but the tool is not localized.
 - **Whisper can hallucinate** on silence or noise. A VAD filter mitigates this on the CPU path; the GPU batched pipeline currently doesn't apply VAD (a faster-whisper limitation), which is a trade-off for speed.
+- **No automatic CUDA→CPU fallback** — if model init fails on CUDA the run stops with exit code 1 and a hint; retry with `--device cpu`.
 - **The output is a snapshot**: no per-message anchors/permalink ids — search the file instead. It is one-way; don't expect to round-trip back into Telegram.
 - **GPU is the default device** and recommended for large chats (`--device cpu` works but is slower). The `medium` default is a reasonable speed/quality midpoint — pick `small` for speed, `large-v3` for quality.
+- **`merge_exports.py` combines caches, it doesn't fill them** — files missing from every source export are reported in the statistics and stay without transcripts (there is no re-transcription pass).
 
 ## Privacy
 

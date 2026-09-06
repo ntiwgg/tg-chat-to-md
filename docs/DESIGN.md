@@ -105,7 +105,7 @@ merge_exports.py --old --new [--extra ...]
 
 **e) Python floor lowered to 3.11** *(0b6f4bf)*
 *Decision:* `requires-python = ">=3.11"` (was `>=3.14`), with ruff `target-version` and mypy `python_version` pinned to 3.11; an unused `typing.override` import was removed along the way.
-*Why:* nothing left in the codebase needs 3.12+-only syntax, and a 3.14 floor would alienate reviewers and CI runners. A CI matrix over 3.12–3.14 is planned but not yet committed (no `.github/workflows` in the repo today).
+*Why:* nothing left in the codebase needs 3.12+-only syntax, and a 3.14 floor would alienate reviewers and CI runners. GitHub Actions CI is committed (`.github/workflows/ci.yml`) and runs the ruff check, strict mypy, and pytest with the 95% coverage gate on Python 3.11–3.14 *(e40ee96)*.
 *Trade-off:* we forgo the newest syntax conveniences; in exchange the tool builds and tests on any mainstream interpreter.
 
 **f) Root modules shipped for the console script** *(5136e7d)*
@@ -131,6 +131,7 @@ merge_exports.py --old --new [--extra ...]
 | Cache write interrupted mid-persist | Writes are atomic — payload fully serialized, written to a `.tmp` sibling, then `os.replace`d over the target *(dee5a2f)* — so a crash or `kill -9` can never leave a truncated cache behind; readers only ever see the old or the new file. A failed flush degrades to a stderr warning and the run continues (the cache is an optimization, not a source of truth); the CLI's `finally`/`KeyboardInterrupt` paths still flush best-effort. |
 | Missing `result.json` | `parse_export` raises `FileNotFoundError("result.json not found in ...")`; the CLI pre-checks the directory and exits 1 with a clear message. |
 | Media file referenced but absent on disk | Resolves to `None`; the message renders with a media label and "(расшифровка недоступна)" instead of crashing. |
+| Per-file transcription failure | The file is skipped with a warning; the rest are transcribed, the Markdown artifact is still written with the transcripts that succeeded, and the run exits 1 — a scriptable signal that the run was incomplete (a fully successful run exits 0) *(88e8476)*. |
 | Reply to a deleted message | Counted and reported as a warning ("N ответов ссылаются на удалённые сообщения"); the reply quote is omitted in the document. |
 | Merge of exports that are all empty | Guarded: the statistics block reads `messages[0]` / `messages[-1]` only when the merged list is non-empty; an all-empty merge reports `нет сообщений (пустой результат)` and finishes cleanly *(6bf73ea)*. |
 | `KeyboardInterrupt` mid-transcription | Cache flushed, progress printed, exit code 1 — completed transcripts survive. |
@@ -152,7 +153,9 @@ The suite's job is to make the pipeline's real behaviors unregressable, not to i
 
 - **No per-message permalinks** in the output, even though `t.me` links are derivable from the chat id.
 - **No published benchmarks**: real-time-factor and VRAM numbers per model are planned but not yet measured.
-- **No automatic CPU fallback**: if CUDA model init fails the run crashes with the underlying error; `--device cpu` is a manual retry. Candidate improvement.
+- **No automatic CUDA→CPU fallback**: if CUDA model init fails, the run exits 1 with a friendly error and a `--device cpu` hint instead of a traceback *(bd80002)*; retrying manually is required. Candidate improvement.
+- **GPU path skips the VAD filter**: the batched GPU pipeline runs without the VAD filter the CPU path applies (`vad_filter=True`), so silence/noise can hallucinate more readily in fast batched runs — a deliberate speed trade-off.
+- **Moving the export folder invalidates the cache**: keys embed each file's canonical absolute path (decision a), so a relocation forces a one-time re-transcription.
 - **Russian-first UI**: console output, day headers, and placeholders are Russian; transcription defaults to `ru`. One `--language` per run — mixed-language chats need a second pass.
 - **Whole-document output**: every run regenerates one `chat.md`; there is no incremental formatting.
 - **Merge limitations**: `merge_exports` does not transcribe missing files — it only reports them in the statistics, so files absent from every source cache stay without transcripts.
