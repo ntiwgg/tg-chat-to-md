@@ -106,20 +106,20 @@ src/transcriber.py       faster-whisper GPU/CPU transcription; cache load/migrat
 src/formatter.py         Message → Markdown: day groups, replies, service messages, entities
 merge_exports.py         merge overlapping exports of one chat; dedup by id; combine caches
 examples/sample_export/  synthetic demo export + its generated chat.md (privacy-safe)
-tests/                   84 hermetic tests — no audio, no model, no network
+tests/                   207 hermetic tests — no audio, no model, no network
 ```
 
 ## Development
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/          # 84 tests, hermetic: model & decoding are stubbed
+.venv/bin/python -m pytest tests/          # 207 tests, hermetic: model & decoding are stubbed
 .venv/bin/python -m pytest --cov           # coverage gate: fail_under 95% on src, per pyproject.toml
 .venv/bin/ruff check .
 .venv/bin/mypy src telegram_to_md.py merge_exports.py
 ```
 
-The `.[dev]` extra installs pytest, ruff, mypy, and pytest-cov. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["src"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%.
+The `.[dev]` extra installs pytest, ruff, mypy, pytest-cov, and Hypothesis. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["src"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%. Property tests (day-order sorting, cache-key migration) and one-shot mutmut audits (last pass: 768/768 mutants killed) are described in docs/DESIGN.md.
 
 ## Limitations, honestly
 
