@@ -24,4 +24,4 @@ jobs:
       - name: Type check (mypy)
         run: mypy
       - name: Test with coverage (pytest)
-        run: pytest tests/ --cov=src --cov-report=term-missing
+        run: pytest tests/ --cov=tg_chat_to_md --cov-report=term-missing

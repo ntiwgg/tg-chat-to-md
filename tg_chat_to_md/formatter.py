@@ -40,7 +40,7 @@ def format_markdown(
     idx = message_index or {}
 
     # Canonicalize input order: message ids define chronology (the same key
-    # parse_export and merge_exports sort by). Grouping and rendering below
+    # parse_export and the merge helper sort by). Grouping and rendering below
     # preserve this order, making the output deterministic for any input
     # permutation — same logical input always yields identical bytes.
     messages = sorted(messages, key=lambda m: m.id)

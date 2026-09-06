@@ -17,9 +17,9 @@ import difflib
 import random
 from pathlib import Path
 
-from src.formatter import format_markdown
-from src.models import Message
-from src.parser import parse_export
+from tg_chat_to_md.formatter import format_markdown
+from tg_chat_to_md.models import Message
+from tg_chat_to_md.parser import parse_export
 
 REPO = Path(__file__).resolve().parents[1]
 SAMPLE_DIR = REPO / "examples" / "sample_export"
@@ -54,7 +54,7 @@ def _golden_diff(actual: str) -> str:
 def _render(
     chat_name: str, messages: list[Message], transcripts: dict[str, str] | None = None
 ) -> str:
-    """Render the sample exactly like the CLI does (Phase 4 of telegram_to_md)."""
+    """Render the sample exactly like the CLI does (Phase 4 of tg_chat_to_md)."""
     msg_index = {m.id: m for m in messages}
     return format_markdown(messages, chat_name, transcripts or {}, msg_index)
 

@@ -1,4 +1,4 @@
-"""Unit tests for src.models.Message helper properties.
+"""Unit tests for tg_chat_to_md.models.Message helper properties.
 
 Hermetic: Message dataclasses are constructed directly; no parsing, no files.
 Covers has_text/plain_text over all text shapes, forwarded_source_kind,
@@ -7,7 +7,7 @@ media-kind properties, and the placeholder/None handling of has_media_file.
 
 import pytest
 
-from src.models import Message
+from tg_chat_to_md.models import Message
 
 
 def _message(**overrides) -> Message:

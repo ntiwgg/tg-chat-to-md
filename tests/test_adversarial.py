@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from src.formatter import format_markdown
-from src.parser import parse_export
+from tg_chat_to_md.formatter import format_markdown
+from tg_chat_to_md.parser import parse_export
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 FIXTURE_NAMES = sorted(p.stem for p in FIXTURES_DIR.glob("adv_*.json"))

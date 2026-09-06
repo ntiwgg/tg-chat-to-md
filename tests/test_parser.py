@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from src.models import Reaction, TextEntity
-from src.parser import _parse_message, parse_export
+from tg_chat_to_md.models import Reaction, TextEntity
+from tg_chat_to_md.parser import _parse_message, parse_export
 
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "examples" / "sample_export"
 

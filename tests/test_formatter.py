@@ -1,4 +1,4 @@
-"""Unit tests for src/formatter.py message rendering and day-group ordering.
+"""Unit tests for tg_chat_to_md/formatter.py message rendering and day-group ordering.
 
 Hermetic: constructs Message objects directly, no network/audio/real chat data.
 Rendering tests assert EXACT body lines (via _body_lines) rather than
@@ -13,8 +13,8 @@ from datetime import datetime
 
 import pytest
 
-from src.formatter import _date_key, _day_sort_key, format_markdown
-from src.models import Message, Reaction, ReactionRecent, TextEntity
+from tg_chat_to_md.formatter import _date_key, _day_sort_key, format_markdown
+from tg_chat_to_md.models import Message, Reaction, ReactionRecent, TextEntity
 
 
 def _message(msg_id: int, date: str) -> Message:

@@ -34,14 +34,14 @@ from pathlib import Path
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from src.cache import migrate_cache_keys
-from src.formatter import format_markdown
-from src.models import Message
+from tg_chat_to_md.cache import migrate_cache_keys
+from tg_chat_to_md.formatter import format_markdown
+from tg_chat_to_md.models import Message
 
 # ---------------------------------------------------------------------------
 # Oracle: parse Russian day-group headers ("5 января 2026") back into
 # datetimes with a test-local month table — the header format is pinned here
-# independently of src.formatter._date_key.
+# independently of tg_chat_to_md.formatter._date_key.
 # ---------------------------------------------------------------------------
 _RU_MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",

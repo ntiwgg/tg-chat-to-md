@@ -2,9 +2,10 @@
 """Telegram Chat Export → Markdown converter with speech-to-text.
 
 Usage:
-    python telegram_to_md.py "ChatExport_2026-07-24 (1)/"
-    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --model small --output chat.md
-    python telegram_to_md.py "ChatExport_2026-07-24 (1)/" --device cpu --model small
+    tg-chat-to-md "ChatExport_2026-07-24 (1)/"
+    tg-chat-to-md "ChatExport_2026-07-24 (1)/" --model small --output chat.md
+    tg-chat-to-md "ChatExport_2026-07-24 (1)/" --device cpu --model small
+    python -m tg_chat_to_md "ChatExport_2026-07-24 (1)/"   # same CLI, no install
 
 Options:
     --model        Whisper model size: tiny, base, small, medium, large-v3, turbo (default: medium)
@@ -33,7 +34,7 @@ CACHE_FLUSH_EVERY = 50
 def _cli_version() -> str:
     """Version of the installed distribution; dev fallback when run unpackaged."""
     try:
-        return version("telegramanal")
+        return version("tg-chat-to-md")
     except PackageNotFoundError:
         return "0.0.0.dev0"
 
@@ -90,9 +91,9 @@ def _setup_cuda_libs() -> None:
 
 _setup_cuda_libs()
 
-from src.formatter import format_markdown
-from src.parser import parse_export
-from src.transcriber import Transcriber
+from .formatter import format_markdown
+from .parser import parse_export
+from .transcriber import Transcriber
 
 
 def _flush_cache_or_warn(transcriber: Transcriber) -> None:

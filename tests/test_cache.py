@@ -4,7 +4,7 @@ Hermetic: no audio decoding, no real whisper model (stubs only), no network.
 Covers:
   - _resolve_file returns the same canonical absolute key regardless of CWD
     and of how export_dir was typed on the CLI;
-  - migrate_cache_keys (src.cache) re-keys legacy export-relative entries to
+  - migrate_cache_keys (tg_chat_to_md.cache) re-keys legacy export-relative entries to
     canonical absolute paths (prefix stripped until the file exists), keeps
     absolute keys, drops unmatchable ones, and never mutates its input;
   - the cache file is written only by flush_cache(), never by transcribe();
@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-import src.transcriber as transcriber_mod
-from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache, write_cache
-from src.parser import _resolve_file
-from src.transcriber import Transcriber
+import tg_chat_to_md.transcriber as transcriber_mod
+from tg_chat_to_md.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache, write_cache
+from tg_chat_to_md.parser import _resolve_file
+from tg_chat_to_md.transcriber import Transcriber
 
 EXPORT_NAME = "ChatExport_2026-07-24 (1)"
 AUDIO_1 = "audio_1@27-06-2026_09-40-01.ogg"

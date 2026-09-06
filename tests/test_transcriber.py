@@ -1,11 +1,11 @@
 """Hermetic Transcriber tests through the faster-whisper duck-contract seam.
 
-src.transcriber must stay importable without faster-whisper installed (the
-CLI and the rest of the suite rely on it), so a real WhisperModel can never
-be constructed in tests. The documented seam is the model itself: tests
-monkeypatch the module-level HAS_WHISPER flag and the WhisperModel /
-BatchedInferencePipeline classes with recorders, then run the real
-Transcriber.__init__ / transcribe code paths end to end.
+tg_chat_to_md.transcriber must stay importable without faster-whisper
+installed (the CLI and the rest of the suite rely on it), so a real
+WhisperModel can never be constructed in tests. The documented seam is the
+model itself: tests monkeypatch the module-level HAS_WHISPER flag and the
+WhisperModel / BatchedInferencePipeline classes with recorders, then run the
+real Transcriber.__init__ / transcribe code paths end to end.
 
 Covers: the not-installed RuntimeError, "auto" compute-type resolution per
 device, CPU thread defaults, exact constructor/transcribe call arguments
@@ -16,9 +16,9 @@ passthrough. No audio, no network, no real model.
 
 import pytest
 
-import src.transcriber as transcriber_mod
-from src.cache import CACHE_FILE_NAME, write_cache
-from src.transcriber import Transcriber
+import tg_chat_to_md.transcriber as transcriber_mod
+from tg_chat_to_md.cache import CACHE_FILE_NAME, write_cache
+from tg_chat_to_md.transcriber import Transcriber
 
 
 class _Segment:

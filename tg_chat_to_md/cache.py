@@ -1,9 +1,10 @@
 """Shared JSON transcript-cache helpers.
 
-Both the transcriber and merge_exports work with per-export transcript
+Both the transcriber (tg_chat_to_md/transcriber.py) and the merge helper
+(tg_chat_to_md/merge.py) work with per-export transcript
 caches (<export_dir>/_transcripts_cache.json). This module owns the one
 implementation of how a cache is read, written, and re-keyed, so both tools
-cannot drift apart again (a past bug: merge_exports parsed cache files with
+cannot drift apart again (a past bug: the merge helper parsed cache files with
 different corrupt-JSON semantics and merged raw legacy keys, silently losing
 transcripts).
 

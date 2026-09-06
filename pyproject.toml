@@ -1,5 +1,5 @@
 [project]
-name = "telegramanal"
+name = "tg-chat-to-md"
 version = "0.1.0"
 description = "Convert Telegram chat exports to Markdown with local Whisper speech-to-text"
 readme = "README.md"
@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.scripts]
-telegram-to-md = "telegram_to_md:main"
+tg-chat-to-md = "tg_chat_to_md.cli:main"
+tg-chat-merge = "tg_chat_to_md.merge:main"
 
 [project.optional-dependencies]
 dev = [
@@ -30,11 +31,8 @@ dev = [
     "mypy>=1.10",
 ]
 
-[tool.setuptools]
-py-modules = ["telegram_to_md", "merge_exports"]
-
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["tg_chat_to_md*"]
 
 [tool.ruff]
 target-version = "py311"
@@ -44,12 +42,12 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# CUDA libs must be preloaded before src.transcriber imports faster-whisper.
-"telegram_to_md.py" = ["E402"]
+# CUDA libs must be preloaded before tg_chat_to_md.transcriber imports faster-whisper.
+"tg_chat_to_md/cli.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["src", "telegram_to_md.py", "merge_exports.py"]
+files = ["tg_chat_to_md"]
 disallow_untyped_defs = true
 check_untyped_defs = true
 warn_unused_ignores = true
@@ -58,16 +56,17 @@ warn_unused_ignores = true
 testpaths = ["tests"]
 
 [tool.mutmut]
-# One-shot quality audit (Phase 4): mutate the src package, run the real test
-# suite against every mutant. Mutation score is a review input, not a CI gate.
-source_paths = ["src/"]
+# One-shot quality audit (Phase 4): mutate the tg_chat_to_md package, run the
+# real test suite against every mutant. Mutation score is a review input, not
+# a CI gate.
+source_paths = ["tg_chat_to_md/"]
 pytest_add_cli_args_test_selection = ["tests/"]
-# Root console-script modules and the golden sample data must follow the
-# mutated sources into the mutants/ sandbox or their tests cannot run.
-also_copy = ["examples", "telegram_to_md.py", "merge_exports.py"]
+# The golden sample data must follow the mutated sources into the mutants/
+# sandbox or its tests cannot run.
+also_copy = ["examples"]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["tg_chat_to_md"]
 
 [tool.coverage.report]
 fail_under = 95

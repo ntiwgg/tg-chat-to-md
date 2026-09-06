@@ -4,10 +4,10 @@ Hermetic: no audio decoding, no model load, no network. Covers:
   - the real CLI parser accepts --device cpu;
   - removed/dead flags (--workers, --cpu) and invalid --model/--device
     choices are rejected with an argparse error (exit code 2);
-  - `telegram_to_md.py --help` exits 0 and advertises --device without
-    mentioning --workers or --cpu;
-  - src.transcriber imports cleanly and keeps its CLI seam (transcribe,
-    flush_cache);
+  - `python -m tg_chat_to_md.cli --help` exits 0 and advertises --device
+    without mentioning --workers or --cpu;
+  - tg_chat_to_md.transcriber imports cleanly and keeps its CLI seam
+    (transcribe, flush_cache);
   - --version exits 0 with a semver-ish string;
   - a missing result.json exits 1 with a friendly message, not a traceback;
   - --no-cache wiring: cache_dir=None vs the export dir, one transcribe call
@@ -29,17 +29,17 @@ from pathlib import Path
 
 import pytest
 
-import src.transcriber as transcriber_mod
+import tg_chat_to_md.transcriber as transcriber_mod
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI = REPO_ROOT / "telegram_to_md.py"
+CLI_ARGS = ("-m", "tg_chat_to_md.cli")
 GHOST_EXPORT = "ChatExport_ghost/"
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run the real CLI script in a subprocess from the repo root."""
+    """Run the real CLI module in a subprocess from the repo root."""
     return subprocess.run(
-        [sys.executable, str(CLI), *args],
+        [sys.executable, *CLI_ARGS, *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -81,7 +81,7 @@ def _make_voice_export(tmp_path: Path, n: int = 2) -> Path:
 class _CacheAwareTranscriber:
     """Shared fake for the CLI's Transcriber seam: an in-memory cache plus the
     public stats API (cached_count, missing_from_cache) that
-    telegram_to_md.main drives. Subclasses add call recording / faults."""
+    tg_chat_to_md.cli.main drives. Subclasses add call recording / faults."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._cache: dict[str, str] = {}
@@ -142,13 +142,13 @@ def test_help_exits_zero_and_describes_real_flags() -> None:
 
 
 # ---------------------------------------------------------------------------
-# src.transcriber: import smoke + the CLI duck-contract seam
+# tg_chat_to_md.transcriber: import smoke + the CLI duck-contract seam
 # ---------------------------------------------------------------------------
 def test_transcriber_import_smoke_and_cli_seam() -> None:
     """The import at the top of this file is the smoke check (the module must
     load without faster-whisper installed — every subprocess CLI test below
     relies on it). The class-level callable check documents the seam the
-    in-process tests stub: telegram_to_md.main drives instances through
+    in-process tests stub: tg_chat_to_md.cli.main drives instances through
     transcribe(filepath), flush_cache(), cached_count(...) and
     missing_from_cache(...)."""
     assert callable(transcriber_mod.Transcriber.transcribe)
@@ -164,8 +164,13 @@ def test_version_exits_zero_and_prints_semver() -> None:
     proc = _run_cli("--version")
 
     assert proc.returncode == 0
-    # "telegram_to_md.py 0.1.0" when installed, "0.0.0.dev0" when unpackaged
-    assert re.fullmatch(r"telegram_to_md\.py \d+\.\d+\.\d+(\.dev\d+)?", proc.stdout.strip())
+    # prog differs across Python versions: argparse renders "cli.py" on
+    # 3.11-3.13 but "python -m tg_chat_to_md.cli" on 3.14+ for -m runs.
+    # Version is "0.1.0" when installed, "0.0.0.dev0" when unpackaged.
+    assert re.fullmatch(
+        r"(cli\.py|python -m tg_chat_to_md\.cli) \d+\.\d+\.\d+(\.dev\d+)?",
+        proc.stdout.strip(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,14 +202,14 @@ def test_export_dir_check_is_friendly() -> None:
 # model-load failure: exit 1 with actionable hint, no traceback (in-process)
 # ---------------------------------------------------------------------------
 def test_model_load_failure_is_friendly(tmp_path, monkeypatch, capsys) -> None:
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path)
     monkeypatch.setattr(
         sys,
         "argv",
         [
-            "telegram_to_md.py",
+            "tg-chat-to-md",
             str(export_dir),
             "--model",
             "tiny",
@@ -236,14 +241,14 @@ def test_model_load_failure_is_friendly(tmp_path, monkeypatch, capsys) -> None:
 # the artifact is still written, and the run exits 1 (partial-run signal)
 # ---------------------------------------------------------------------------
 def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> None:
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=2)
     output_path = tmp_path / "out.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     # Drop the progress bar so test output stays clean (tqdm imported inside main).
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
@@ -278,14 +283,14 @@ def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> 
 
 
 def test_per_file_success_writes_no_failure_summary(tmp_path, monkeypatch, capsys) -> None:
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=1)
     output_path = tmp_path / "out.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -314,7 +319,7 @@ def test_cache_flushes_every_n_files_and_on_exit(tmp_path, monkeypatch) -> None:
     """REGRESSION guard for the batching policy: the cache is persisted after
     every CACHE_FLUSH_EVERY files and once more in the finally block. Runs the
     real main() transcription loop in-process — no model, recording stub."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     n_files = 4
     export_dir = _make_voice_export(tmp_path, n=n_files)
@@ -323,7 +328,7 @@ def test_cache_flushes_every_n_files_and_on_exit(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -362,7 +367,7 @@ def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
 ) -> None:
     """--no-cache must reach Transcriber as cache_dir=None; without the flag
     the export dir is the cache dir. Transcribe runs exactly once per file."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=2)
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
@@ -389,7 +394,7 @@ def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(with_cache)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(with_cache)],
     )
     cli.main()
     assert instances[-1].cache_dir == export_dir
@@ -399,7 +404,7 @@ def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--no-cache", "--output", str(no_cache)],
+        ["tg-chat-to-md", str(export_dir), "--no-cache", "--output", str(no_cache)],
     )
     cli.main()
     assert instances[-1].cache_dir is None
@@ -413,14 +418,14 @@ def test_cache_hits_are_counted_and_not_re_transcribed(tmp_path, monkeypatch, ca
     in the cache is counted on stdout ("📦 … уже в кэше"), reported as missing
     by the count of the "Расшифровываю" line, and its cached text lands in the
     markdown without a second transcribe() call."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=2)
     output_path = tmp_path / "out.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -460,14 +465,14 @@ def test_cache_hits_are_counted_and_not_re_transcribed(tmp_path, monkeypatch, ca
 def test_keyboard_interrupt_flushes_cache_and_exits_1(tmp_path, monkeypatch) -> None:
     """Ctrl-C mid-run must persist the partial cache (durability) and exit 1
     without writing the markdown."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=3)
     output_path = tmp_path / "out.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -509,7 +514,7 @@ def test_flush_failure_warns_and_run_completes(tmp_path, monkeypatch, capsys) ->
     """A failing cache flush (e.g. full disk) must not abort transcription:
     the run warns on stderr, keeps going, and still writes the markdown with
     the in-memory transcripts (chat.md is the artifact; the cache is not)."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=2)
     output_path = tmp_path / "out.md"
@@ -517,7 +522,7 @@ def test_flush_failure_warns_and_run_completes(tmp_path, monkeypatch, capsys) ->
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -553,14 +558,14 @@ def test_keyboard_interrupt_with_failing_flush_still_exits_1_cleanly(
 ) -> None:
     """Ctrl-C while the cache cannot be written must not become a traceback:
     the interrupt handler warns, and exit code 1 stays the only outcome."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = _make_voice_export(tmp_path, n=3)
     output_path = tmp_path / "out.md"
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
@@ -595,7 +600,7 @@ def test_no_media_export_never_constructs_transcriber(tmp_path, monkeypatch, cap
     """A text-only export skips model loading entirely (no Transcriber
     construction), prints the no-media notice, exits 0, and still writes the
     markdown."""
-    import telegram_to_md as cli
+    import tg_chat_to_md.cli as cli
 
     export_dir = tmp_path / "ChatExport_text_only"
     export_dir.mkdir()
@@ -623,7 +628,7 @@ def test_no_media_export_never_constructs_transcriber(tmp_path, monkeypatch, cap
     monkeypatch.setattr(
         sys,
         "argv",
-        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+        ["tg-chat-to-md", str(export_dir), "--output", str(output_path)],
     )
 
     def _bomb(*args, **kwargs):

@@ -4,10 +4,11 @@
 Merge order: --old, --new, --extra... — earlier exports win on id collisions.
 
 Usage:
-    python merge_exports.py --old "ChatExport_2026-07-24 (1)" \
-                            --new "ChatExport_2026-08-10 (1)" \
-                            --extra "ChatExport_2026-08-10 (2)" \
-                            --output chat.md
+    tg-chat-merge --old "ChatExport_2026-07-24 (1)" \
+                  --new "ChatExport_2026-08-10 (1)" \
+                  --extra "ChatExport_2026-08-10 (2)" \
+                  --output chat.md
+    python -m tg_chat_to_md.merge --old ... --new ...   # same tool, no install
 
 The --extra flag may be repeated to merge additional exports after --new.
 """
@@ -17,10 +18,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache
-from src.formatter import format_markdown
-from src.models import Message
-from src.parser import parse_export
+from .cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache
+from .formatter import format_markdown
+from .models import Message
+from .parser import parse_export
 
 
 def _merge_messages(*exports: list[Message]) -> list[Message]:

@@ -1,8 +1,9 @@
-"""Hermetic tests for merge_exports: message union, cache re-keying, guards.
+"""Hermetic tests for the merge helper (tg_chat_to_md.merge): message union,
+cache re-keying, guards.
 
 Builds tiny synthetic exports (result.json + real placeholder audio files +
 legacy-keyed _transcripts_cache.json) under tmp_path, then runs the real
-merge entry point (merge_exports.main with sys.argv patched) with --output
+merge entry point (merge.main with sys.argv patched) with --output
 pointing into tmp_path — nothing outside the fixture is ever written.
 
 Covers:
@@ -19,8 +20,8 @@ import json
 import sys
 from pathlib import Path
 
-import merge_exports
-from src.cache import CACHE_FILE_NAME
+import tg_chat_to_md.merge as merge
+from tg_chat_to_md.cache import CACHE_FILE_NAME
 
 OLD_NAME = "ChatExport_2026-07-24 (1)"
 NEW_NAME = "ChatExport_2026-08-10 (1)"
@@ -99,9 +100,9 @@ def _run_merge(
     extra: list[Path] | None = None,
     capsys,
 ) -> tuple[Path, str, str]:
-    """Run merge_exports.main() with patched argv; return (output_path, stdout, stderr)."""
+    """Run merge.main() with patched argv; return (output_path, stdout, stderr)."""
     argv = [
-        "merge_exports",
+        "tg_chat_to_md.merge",
         "--old",
         str(old),
         "--new",
@@ -113,7 +114,7 @@ def _run_merge(
     argv += ["--output", str(output_path)]
 
     monkeypatch.setattr(sys, "argv", argv)
-    merge_exports.main()
+    merge.main()
     captured = capsys.readouterr()
     return output_path, captured.out, captured.err
 
@@ -384,7 +385,7 @@ def test_merge_cache_collision_keeps_earlier_exports_text() -> None:
     Order in the merge call follows the CLI: --old, --new, --extra..."""
     shared_key = "/chat/voice_messages/audio_1.ogg"
 
-    merged = merge_exports._merge_caches(
+    merged = merge._merge_caches(
         {shared_key: "текст из старого"}, {shared_key: "текст из нового"}
     )
 
@@ -397,7 +398,7 @@ def test_merge_cache_collision_depends_on_argument_order() -> None:
     message dedupe."""
     shared_key = "/chat/voice_messages/audio_1.ogg"
 
-    merged = merge_exports._merge_caches(
+    merged = merge._merge_caches(
         {shared_key: "текст из нового"}, {shared_key: "текст из старого"}
     )
 
