@@ -1,0 +1,26 @@
+{
+  "name": "Adversarial: forwarded channel",
+  "id": 9001,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-07-01T09:00:00",
+      "date_unixtime": "0",
+      "from": "Аня",
+      "from_id": "user1",
+      "text": "Смотри, что канал постит",
+      "forwarded_from": "Парк культуры и отдыха",
+      "forwarded_from_id": "channel42"
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2026-07-01T09:05:00",
+      "date_unixtime": "0",
+      "from": "Борис",
+      "text": "А это вообще без id пересылки",
+      "forwarded_from": "Лесной журнал"
+    }
+  ]
+}

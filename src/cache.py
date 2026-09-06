@@ -19,7 +19,9 @@ means some files are re-transcribed or show the "no transcript" placeholder.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -55,10 +57,27 @@ def read_cache(cache_path: Path) -> dict[str, str]:
 
 
 def write_cache(cache_path: Path, data: dict[str, str]) -> None:
-    """Persist the cache as compact single-line JSON (utf-8)."""
-    cache_path.write_text(
-        json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
-    )
+    """Persist the cache atomically (tmp file + os.replace); compact JSON.
+
+    A crash or write error mid-persist must never leave a truncated cache
+    behind: readers degrade corrupt JSON to an empty cache, silently losing
+    every transcript. The payload is therefore fully serialized first, written
+    to a temp sibling in the SAME directory, then renamed over the target —
+    the rename is atomic on POSIX, so the previous cache stays readable until
+    the very last step. On failure the temp file is removed best-effort and
+    the original OSError propagates (fail loud: a cache that cannot be written
+    means transcription progress will not survive this run).
+    """
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    tmp_path = cache_path.with_name(cache_path.name + ".tmp")
+    try:
+        tmp_path.write_text(payload, encoding="utf-8")
+        os.replace(tmp_path, cache_path)
+    except OSError:
+        # Best-effort cleanup: a failed write must not litter .tmp files.
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def migrate_cache_keys(cache: dict[str, str], export_root: Path) -> dict[str, str]:
@@ -69,16 +88,19 @@ def migrate_cache_keys(cache: dict[str, str], export_root: Path) -> dict[str, st
     CWD and break when the folder moves. Relative keys are matched by dropping
     leading path components until the remainder points to an existing file; the
     entry is then re-keyed to that file's canonical absolute path. Absolute
-    keys are kept verbatim. Entries that cannot be matched to an existing file
-    are dropped — they would be re-transcribed anyway. Pure function: the input
-    dict is not modified.
+    keys that point to an existing file are kept verbatim. Every entry whose
+    file cannot be found on disk — absolute or relative — is dropped: it could
+    never be served (transcripts are only looked up for files that exist), so
+    keeping it would just re-write dead weight into every future cache file.
+    Pure function: the input dict is not modified.
     """
     root = Path(export_root).resolve()
     migrated: dict[str, str] = {}
     for key, text in cache.items():
         key_path = Path(key)
         if key_path.is_absolute():
-            migrated[key] = text
+            if key_path.exists():
+                migrated[key] = text
             continue
         parts = key_path.parts
         for i in range(len(parts)):

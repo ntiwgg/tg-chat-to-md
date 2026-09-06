@@ -1,0 +1,15 @@
+{
+  "name": "Adversarial: empty text list",
+  "id": 9005,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-07-05T12:00:00",
+      "date_unixtime": "0",
+      "from": "Оля",
+      "text": [],
+      "text_entities": []
+    }
+  ]
+}

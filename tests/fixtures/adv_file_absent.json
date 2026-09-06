@@ -1,0 +1,40 @@
+{
+  "name": "Adversarial: media file absent",
+  "id": 9006,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-07-06T10:00:00",
+      "date_unixtime": "0",
+      "from": "Борис",
+      "text": "",
+      "media_type": "voice_message",
+      "file": "(File not included by export)",
+      "duration_seconds": 11
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2026-07-06T10:01:00",
+      "date_unixtime": "0",
+      "from": "Борис",
+      "text": "",
+      "media_type": "video_message",
+      "file": "(File unavailable, please try again later)",
+      "duration_seconds": 4
+    },
+    {
+      "id": 3,
+      "type": "message",
+      "date": "2026-07-06T10:02:00",
+      "date_unixtime": "0",
+      "from": "Вера",
+      "text": "вложение потеряно на диске",
+      "media_type": "video_file",
+      "file": "video_files/ghost_clip.mp4",
+      "file_name": "clip.mp4",
+      "duration_seconds": 30
+    }
+  ]
+}

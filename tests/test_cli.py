@@ -435,6 +435,98 @@ def test_keyboard_interrupt_flushes_cache_and_exits_1(tmp_path, monkeypatch) -> 
     assert not output_path.exists()  # no markdown written after the abort
 
 
+# ---------------------------------------------------------------------------
+# flush failure resilience: a cache write error must not abort the run or
+# turn Ctrl-C into a traceback (the cache is a performance optimization)
+# ---------------------------------------------------------------------------
+def test_flush_failure_warns_and_run_completes(tmp_path, monkeypatch, capsys) -> None:
+    """A failing cache flush (e.g. full disk) must not abort transcription:
+    the run warns on stderr, keeps going, and still writes the markdown with
+    the in-memory transcripts (chat.md is the artifact; the cache is not)."""
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=2)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(cli, "CACHE_FLUSH_EVERY", 1)  # flush after every file
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _FlushBrokenTranscriber:
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+            self.transcribed = 0
+
+        def transcribe(self, fp: str) -> str:
+            self.transcribed += 1
+            return f"текст {self.transcribed}"
+
+        def flush_cache(self) -> None:
+            raise OSError("disk full (тестовая)")
+
+    stub = _FlushBrokenTranscriber()
+    monkeypatch.setattr(cli, "Transcriber", lambda *a, **kw: stub)
+
+    cli.main()  # must not raise, must not sys.exit
+
+    assert stub.transcribed == 2  # both files were transcribed
+    err = capsys.readouterr().err
+    assert "Не удалось сохранить кэш расшифровок" in err
+    assert "Traceback" not in err
+    # The markdown still carries both transcripts from memory.
+    md = output_path.read_text(encoding="utf-8")
+    assert "> *Расшифровка:* текст 1" in md
+    assert "> *Расшифровка:* текст 2" in md
+
+
+def test_keyboard_interrupt_with_failing_flush_still_exits_1_cleanly(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """Ctrl-C while the cache cannot be written must not become a traceback:
+    the interrupt handler warns, and exit code 1 stays the only outcome."""
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=3)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _InterruptingBrokenFlush:
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+            self.transcribed = 0
+
+        def transcribe(self, fp: str) -> str:
+            self.transcribed += 1
+            if self.transcribed == 2:
+                raise KeyboardInterrupt
+            return "текст"
+
+        def flush_cache(self) -> None:
+            raise OSError("disk full (тестовая)")
+
+    stub = _InterruptingBrokenFlush()
+    monkeypatch.setattr(cli, "Transcriber", lambda *a, **kw: stub)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "Не удалось сохранить кэш расшифровок" in err
+    assert "Traceback" not in err
+    assert not output_path.exists()
+
+
 def test_no_media_export_never_constructs_transcriber(tmp_path, monkeypatch, capsys) -> None:
     """A text-only export skips model loading entirely (no Transcriber
     construction), prints the no-media notice, exits 0, and still writes the

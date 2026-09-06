@@ -14,12 +14,13 @@ Covers:
 """
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 import src.transcriber as transcriber_mod
-from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache
+from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache, write_cache
 from src.parser import _resolve_file
 from src.transcriber import Transcriber
 
@@ -169,13 +170,27 @@ def test_migrate_keeps_only_existing_files_and_drops_the_rest(tmp_path) -> None:
     assert migrated == {str(audio1.resolve()): "exists"}
 
 
-def test_migrate_keeps_absolute_keys_verbatim(tmp_path) -> None:
+def test_migrate_keeps_existing_absolute_keys_verbatim(tmp_path) -> None:
     export, _audio1, _audio2 = _make_export(tmp_path)
-    abs_key = str(export / VOICE_SUBDIR / "elsewhere.ogg")  # need not exist on disk
+    abs_file = _touch(export / "media" / "present.ogg")  # exists on disk
 
-    migrated = migrate_cache_keys({abs_key: "текст"}, export)
+    migrated = migrate_cache_keys({str(abs_file): "текст"}, export)
 
-    assert migrated == {abs_key: "текст"}
+    # Existing absolute keys are already canonical — kept as-is, byte for byte.
+    assert migrated == {str(abs_file): "текст"}
+
+
+def test_migrate_drops_nonexistent_absolute_keys(tmp_path) -> None:
+    """Contract (pinned by the property test): an absolute key whose file no
+    longer exists is dropped like any other unmatchable entry — it could never
+    be served (transcripts are only looked up for files that exist), so
+    keeping it would re-write dead weight into every future cache file."""
+    export, _audio1, _audio2 = _make_export(tmp_path)
+    gone_key = str(export / "voice_messages" / "deleted.ogg")  # not on disk
+
+    migrated = migrate_cache_keys({gone_key: "текст"}, export)
+
+    assert migrated == {}
 
 
 def test_migrate_does_not_mutate_input_dict(tmp_path) -> None:
@@ -334,3 +349,61 @@ def test_transcriber_init_survives_non_object_cache(tmp_path, monkeypatch, raw) 
     assert json.loads(cache_file.read_text(encoding="utf-8")) == {
         str(audio1.resolve()): "текст из модели"
     }
+
+
+# ---------------------------------------------------------------------------
+# atomic write_cache: crash mid-write never corrupts or loses the old cache
+# ---------------------------------------------------------------------------
+def _tmp_suffix(path: Path) -> Path:
+    """The temp sibling write_cache stages before the atomic rename."""
+    return path.with_name(path.name + ".tmp")
+
+
+def test_write_cache_success_leaves_no_tmp_and_content_correct(tmp_path) -> None:
+    cache_file = tmp_path / CACHE_FILE_NAME
+    data = {"ключ": "текст с юникодом: 日本語"}
+
+    write_cache(cache_file, data)
+
+    assert not _tmp_suffix(cache_file).exists()  # no staging litter
+    assert json.loads(cache_file.read_text(encoding="utf-8")) == data
+    # compact single-line JSON, unchanged from the pre-atomic format
+    assert cache_file.read_text(encoding="utf-8") == json.dumps(
+        data, ensure_ascii=False, separators=(",", ":")
+    )
+
+
+@pytest.mark.parametrize("fail_on_replace", [False, True])
+def test_failed_write_preserves_original_cache_and_leaves_no_tmp(
+    tmp_path, monkeypatch, fail_on_replace
+) -> None:
+    """Crash-consistency: an OSError at either stage of the atomic write (temp
+    write or rename) must leave the ORIGINAL cache file byte-identical, no
+    .tmp litter behind, and the old dict still readable — a failed flush never
+    loses the transcripts that were already on disk."""
+    cache_file = tmp_path / CACHE_FILE_NAME
+    old_data = {"старый ключ": "старый текст"}
+    write_cache(cache_file, old_data)
+    original_bytes = cache_file.read_bytes()
+
+    if fail_on_replace:
+        def _boom_replace(src, dst):
+            raise OSError("rename failed (тестовая)")
+        monkeypatch.setattr(os, "replace", _boom_replace)
+    else:
+        real_write_text = Path.write_text
+
+        def _failing_write_text(self, *args, **kwargs):
+            if self == _tmp_suffix(cache_file):
+                raise OSError("write failed (тестовая)")
+            return real_write_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", _failing_write_text)
+
+    with pytest.raises(OSError):
+        write_cache(cache_file, {"новый ключ": "новый текст"})
+
+    # The previous cache survived untouched and still reads as the old dict.
+    assert cache_file.read_bytes() == original_bytes
+    assert read_cache(cache_file) == old_data
+    assert not _tmp_suffix(cache_file).exists()  # no staging litter after failure

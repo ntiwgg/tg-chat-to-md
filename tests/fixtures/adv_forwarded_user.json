@@ -1,0 +1,25 @@
+{
+  "name": "Adversarial: forwarded user",
+  "id": 9002,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-07-02T21:00:00",
+      "date_unixtime": "0",
+      "from": "Вера",
+      "text": "Нашёл в общем чате",
+      "forwarded_from": "Иван Петров",
+      "forwarded_from_id": "user777"
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2026-07-02T21:01:00",
+      "date_unixtime": "0",
+      "from": "Вера",
+      "text": "Переслано из сохранённого",
+      "forwarded_from": "Избранное"
+    }
+  ]
+}

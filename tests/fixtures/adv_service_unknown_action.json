@@ -1,0 +1,22 @@
+{
+  "name": "Adversarial: unknown service action",
+  "id": 9004,
+  "messages": [
+    {
+      "id": 1,
+      "type": "service",
+      "date": "2026-07-04T08:00:00",
+      "date_unixtime": "0",
+      "action": "join_group_by_link",
+      "actor": "Дима",
+      "actor_id": "user9"
+    },
+    {
+      "id": 2,
+      "type": "service",
+      "date": "2026-07-04T08:00:01",
+      "date_unixtime": "0",
+      "action": "history_cleared"
+    }
+  ]
+}

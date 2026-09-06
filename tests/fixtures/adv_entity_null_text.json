@@ -1,0 +1,21 @@
+{
+  "name": "Adversarial: entity with null text",
+  "id": 9009,
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-07-09T09:00:00",
+      "date_unixtime": "0",
+      "from": "Таня",
+      "text": [
+        {"type": "bold", "text": null},
+        " просто текст после пустой сущности"
+      ],
+      "text_entities": [
+        {"type": "bold", "text": null},
+        {"type": "plain", "text": " просто текст после пустой сущности"}
+      ]
+    }
+  ]
+}

@@ -95,6 +95,21 @@ from src.parser import parse_export
 from src.transcriber import Transcriber
 
 
+def _flush_cache_or_warn(transcriber: Transcriber) -> None:
+    """Flush the transcript cache; warn on failure instead of raising.
+
+    The cache is a performance optimization, not source data: a flush error
+    (e.g. a full disk) must not abort transcription that already succeeded —
+    the in-memory transcripts still reach the Markdown — and must never turn
+    the Ctrl-C durability flush (except/finally paths below) into an
+    unexpected traceback. A later flush may succeed once the condition clears.
+    """
+    try:
+        transcriber.flush_cache()
+    except OSError as exc:
+        print(f"⚠ Не удалось сохранить кэш расшифровок: {exc}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -242,14 +257,14 @@ def main() -> None:
                     continue
                 transcripts[fp] = text
                 if (i + 1) % CACHE_FLUSH_EVERY == 0:
-                    transcriber.flush_cache()
+                    _flush_cache_or_warn(transcriber)
         except KeyboardInterrupt:
             print("\n⚠ Прервано пользователем. Сохраняю кэш…")
-            transcriber.flush_cache()
+            _flush_cache_or_warn(transcriber)
             print(f"   Кэш сохранён. Прогресс: {len(transcripts)}/{len(to_transcribe)}")
             sys.exit(1)
         finally:
-            transcriber.flush_cache()
+            _flush_cache_or_warn(transcriber)
 
         t3 = time.monotonic()
         print(f"\n   ✓ Расшифровано за {t3 - t2:.1f}с")
