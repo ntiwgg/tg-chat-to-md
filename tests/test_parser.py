@@ -9,6 +9,7 @@ media files on disk (every file reference is a "(File not included...)" or
 """
 
 import json
+import random
 from pathlib import Path
 
 import pytest
@@ -32,8 +33,30 @@ def test_sample_export_count_name_and_id() -> None:
     assert chat_name == "Пикник у озера"
     assert chat_id == 123456789
     assert len(messages) == 30
-    # chronological by id, even though raw JSON may not be sorted
-    assert [m.id for m in messages] == sorted(m.id for m in messages)
+
+
+def test_parse_sorts_shuffled_messages_by_id(tmp_path) -> None:
+    """Sorting must hold for ANY array order in result.json — not just the
+    committed fixture, which happens to be stored already ordered (a
+    self-comparing assert there is vacuous: deleting the parser's sort would
+    not fail). Rebuild the same messages in a shuffled array order and pin
+    the exact expected chronological sequence."""
+    raw = json.loads((SAMPLE_DIR / "result.json").read_text(encoding="utf-8"))
+    messages_raw = list(raw["messages"])
+    rng = random.Random(0)
+    rng.shuffle(messages_raw)
+    assert messages_raw != raw["messages"]  # guard: the shuffle actually permutes
+
+    export_dir = tmp_path / "ChatExport_shuffled"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps({"name": raw["name"], "id": raw["id"], "messages": messages_raw}),
+        encoding="utf-8",
+    )
+
+    _chat_name, _chat_id, messages = parse_export(export_dir)
+
+    assert [m.id for m in messages] == list(range(1, 31))
 
 
 def test_sample_export_contains_both_text_shapes() -> None:

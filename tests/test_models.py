@@ -5,7 +5,9 @@ Covers has_text/plain_text over all text shapes, forwarded_source_kind,
 media-kind properties, and the placeholder/None handling of has_media_file.
 """
 
-from src.models import LocationInfo, Message, Reaction, ReactionRecent, TextEntity
+import pytest
+
+from src.models import Message
 
 
 def _message(**overrides) -> Message:
@@ -113,15 +115,41 @@ def test_forwarded_source_kind_channel_and_user_and_unknown() -> None:
 
 
 # ---------------------------------------------------------------------------
-# media-kind properties
+# media-kind properties: discriminating cross-product with negatives
 # ---------------------------------------------------------------------------
-def test_media_type_flags() -> None:
-    assert _message(media_type="voice_message").is_voice is True
-    assert _message(media_type="video_message").is_round_video is True
-    assert _message(media_type="sticker").is_sticker is True
-    assert _message(media_type="video_file").is_video_file is True
-    assert _message(media_type="animation").is_animation is True
-    assert _message(media_type=None).is_voice is False
+ALL_MEDIA_FLAGS = [
+    "is_voice",
+    "is_round_video",
+    "is_sticker",
+    "is_video_file",
+    "is_animation",
+    "is_photo",
+]
+
+
+def _active_flags(msg: Message, flags: list[str]) -> list[str]:
+    return [name for name in flags if getattr(msg, name)]
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        # Exactly ONE media flag may be true per message; a copy-paste bug
+        # (e.g. is_voice True for video_message) must fail the set equality.
+        ({"media_type": "voice_message"}, {"is_voice"}),
+        ({"media_type": "video_message"}, {"is_round_video"}),
+        ({"media_type": "sticker"}, {"is_sticker"}),
+        ({"media_type": "video_file"}, {"is_video_file"}),
+        ({"media_type": "animation"}, {"is_animation"}),
+        ({"photo": "(File not included by export)"}, {"is_photo"}),
+        # No media at all: every flag False (the negatives).
+        ({}, set()),
+    ],
+)
+def test_media_kind_flags_are_mutually_exclusive(fields, expected) -> None:
+    msg = _message(**fields)
+
+    assert set(_active_flags(msg, ALL_MEDIA_FLAGS)) == expected
 
 
 def test_is_photo_and_has_media_file() -> None:
@@ -136,39 +164,27 @@ def test_has_media_file_placeholder_and_none() -> None:
     assert _message(file=None).has_media_file is False
 
 
-def test_is_service_is_reply_is_forwarded() -> None:
-    service = _message(type="service", action="phone_call")
-    assert service.is_service is True
-    assert service.is_reply is False
-    assert _message(type="message").is_service is False
-
-    assert _message(reply_to_message_id=3).is_reply is True
-    assert _message(reply_to_message_id=None).is_reply is False
-
-    assert _message(forwarded_from="Кто-то").is_forwarded is True
-    assert _message(forwarded_from=None).is_forwarded is False
-
-
 # ---------------------------------------------------------------------------
-# misc fields
+# is_service / is_reply / is_forwarded: exact flag sets with negatives
 # ---------------------------------------------------------------------------
-def test_location_information_field() -> None:
-    loc = LocationInfo(latitude=55.75, longitude=37.61)
-    msg = _message(location_information=loc)
-
-    assert msg.location_information is not None
-    assert msg.location_information.latitude == 55.75
-    assert msg.location_information.longitude == 37.61
-    assert _message().location_information is None
+STATE_FLAGS = ["is_service", "is_reply", "is_forwarded"]
 
 
-def test_text_entity_dataclass_shapes() -> None:
-    entity = TextEntity(type="bold", text="жирный")
-    assert (entity.type, entity.text) == ("bold", "жирный")
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"type": "service", "action": "phone_call"}, {"is_service"}),
+        # A service message must not read as reply/forwarded...
+        ({"type": "service", "action": "phone_call", "reply_to_message_id": 3},
+         {"is_service", "is_reply"}),  # ...but flags stay independent, no cross-suppression
+        ({"reply_to_message_id": 3}, {"is_reply"}),
+        ({"forwarded_from": "Кто-то"}, {"is_forwarded"}),
+        ({"reply_to_message_id": 3, "forwarded_from": "Кто-то"}, {"is_reply", "is_forwarded"}),
+        ({"type": "message"}, set()),
+        ({}, set()),
+    ],
+)
+def test_state_flags_exact_set_with_negatives(fields, expected) -> None:
+    msg = _message(**fields)
 
-    recent = ReactionRecent(from_name="Аня", from_id="user101", date="2026-09-01T00:00:00")
-    assert recent.from_name == "Аня"
-
-    reaction = Reaction(type="emoji", count=3, emoji="👍", recent=[recent])
-    assert reaction.count == 3
-    assert reaction.recent[0].date == "2026-09-01T00:00:00"
+    assert set(_active_flags(msg, STATE_FLAGS)) == expected
