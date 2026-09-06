@@ -214,6 +214,9 @@ def _format_text(msg: Message) -> str:
                 parts.append(f"`{t}`")
             case "phone":
                 parts.append(f"`{t}`")
+            case "code":
+                # monospace inline segment, like mention/hashtag/phone
+                parts.append(f"`{t}`")
             case "custom_emoji":
                 parts.append(t)
             case "blockquote":
