@@ -7,13 +7,22 @@ Hermetic: no audio decoding, no model load, no network. Covers:
   - `telegram_to_md.py --help` exits 0 and advertises --device without
     mentioning --workers or --cpu;
   - src.transcriber keeps its public API (transcribe, flush_cache, HAS_WHISPER)
-    and no longer defines the removed multiprocessing helpers.
+    and no longer defines the removed multiprocessing helpers;
+  - --version exits 0 with a semver-ish string;
+  - a missing result.json exits 1 with a friendly message, not a traceback;
+  - a failing model load exits 1 with an actionable hint, not a traceback;
+  - a per-file transcription failure is skipped with a warning and a summary
+    line, and the run still produces Markdown.
 """
 
 import inspect
+import json
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 import src.transcriber as transcriber_mod
 
@@ -31,6 +40,34 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         timeout=60,
     )
+
+
+def _make_voice_export(tmp_path: Path, n: int = 2) -> Path:
+    """Synthetic export with n placeholder voice files; return its path."""
+    export_dir = tmp_path / "ChatExport_synthetic"
+    audio_dir = export_dir / "voice_messages"
+    audio_dir.mkdir(parents=True)
+    messages = []
+    for i in range(1, n + 1):
+        (audio_dir / f"voice_{i}.ogg").write_bytes(b"")
+        messages.append(
+            {
+                "id": i,
+                "type": "message",
+                "date": f"2026-07-24T10:{i:02d}:00",
+                "date_unixtime": "0",
+                "from": "Автор",
+                "text": "",
+                "media_type": "voice_message",
+                "file": f"voice_messages/voice_{i}.ogg",
+                "duration_seconds": 5,
+            }
+        )
+    (export_dir / "result.json").write_text(
+        json.dumps({"name": "Тест", "id": 1, "messages": messages}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return export_dir
 
 
 # ---------------------------------------------------------------------------
@@ -90,3 +127,154 @@ def test_transcriber_public_api_stays_intact() -> None:
     assert isinstance(transcriber_mod.HAS_WHISPER, bool)
     assert callable(transcriber_mod.Transcriber.transcribe)
     assert callable(transcriber_mod.Transcriber.flush_cache)
+
+
+# ---------------------------------------------------------------------------
+# --version
+# ---------------------------------------------------------------------------
+def test_version_exits_zero_and_prints_semver() -> None:
+    proc = _run_cli("--version")
+
+    assert proc.returncode == 0
+    # "telegram_to_md.py 0.1.0" when installed, "0.0.0.dev0" when unpackaged
+    assert re.fullmatch(r"telegram_to_md\.py \d+\.\d+\.\d+(\.dev\d+)?", proc.stdout.strip())
+
+
+# ---------------------------------------------------------------------------
+# friendly errors instead of tracebacks (subprocess: real script)
+# ---------------------------------------------------------------------------
+def test_missing_result_json_is_friendly(tmp_path) -> None:
+    export_dir = tmp_path / "ChatExport_no_result"
+    export_dir.mkdir()
+
+    proc = _run_cli(str(export_dir))
+
+    assert proc.returncode == 1
+    assert "result.json" in proc.stderr
+    assert "Traceback" not in proc.stderr
+    assert "Traceback" not in proc.stdout
+
+
+def test_export_dir_check_is_friendly() -> None:
+    proc = _run_cli(GHOST_EXPORT)
+
+    assert proc.returncode == 1
+    assert "директория не найдена" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# model-load failure: exit 1 with actionable hint, no traceback (in-process)
+# ---------------------------------------------------------------------------
+def test_model_load_failure_is_friendly(tmp_path, monkeypatch, capsys) -> None:
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "telegram_to_md.py",
+            str(export_dir),
+            "--model",
+            "tiny",
+            "--device",
+            "cuda",
+            "--output",
+            str(tmp_path / "out.md"),
+        ],
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("CUDA library not found")
+
+    monkeypatch.setattr(cli, "Transcriber", _boom)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main()
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "не удалось загрузить модель" in err
+    assert "--device cpu" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "out.md").exists()  # nothing written after failure
+
+
+# ---------------------------------------------------------------------------
+# per-file tolerance: one bad file skips, rest transcribe, summary printed
+# ---------------------------------------------------------------------------
+def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> None:
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=2)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    # Drop the progress bar so test output stays clean (tqdm imported inside main).
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _FakeTranscriber:
+        """No model: cache-empty stub that fails on exactly one file."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+
+        def transcribe(self, fp: str) -> str:
+            if Path(fp).name == "voice_1.ogg":
+                raise RuntimeError("ошибка декодера (тестовая)")
+            return "текст второго файла"
+
+        def flush_cache(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "Transcriber", _FakeTranscriber)
+
+    cli.main()  # must not raise and must not sys.exit
+
+    md = output_path.read_text(encoding="utf-8")
+    assert "> *Расшифровка:* текст второго файла" in md
+    assert "> *(расшифровка недоступна)*" in md  # the failed file has no entry
+
+    captured = capsys.readouterr()
+    assert "Не удалось расшифровать" in captured.err
+    assert "1 из 2" in captured.err  # failure summary line
+    assert "Traceback" not in captured.err
+
+
+def test_per_file_success_writes_no_failure_summary(tmp_path, monkeypatch, capsys) -> None:
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=1)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _FakeTranscriber:
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+
+        def transcribe(self, fp: str) -> str:
+            return "единственная расшифровка"
+
+        def flush_cache(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli, "Transcriber", _FakeTranscriber)
+
+    cli.main()
+
+    md = output_path.read_text(encoding="utf-8")
+    assert "> *Расшифровка:* единственная расшифровка" in md
+    assert "недоступна" not in md
+    err = capsys.readouterr().err
+    assert "Не удалось расшифровать" not in err

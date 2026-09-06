@@ -21,7 +21,16 @@ import argparse
 import os
 import sys
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+
+
+def _cli_version() -> str:
+    """Version of the installed distribution; dev fallback when run unpackaged."""
+    try:
+        return version("telegramanal")
+    except PackageNotFoundError:
+        return "0.0.0.dev0"
 
 
 def _setup_cuda_libs() -> None:
@@ -90,6 +99,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {_cli_version()}"
+    )
+    parser.add_argument(
         "export_dir",
         help="Path to the Telegram Chat Export directory (contains result.json)",
     )
@@ -133,7 +145,16 @@ def main() -> None:
     # ------------------------------------------------------------------
     print(f"📖 Читаю {export_dir / 'result.json'}…")
     t0 = time.monotonic()
-    chat_name, chat_id, messages = parse_export(export_dir)
+    try:
+        chat_name, chat_id, messages = parse_export(export_dir)
+    except FileNotFoundError:
+        print(
+            f"Ошибка: в папке {export_dir} нет файла result.json.\n"
+            "   Укажите путь к папке экспорта Telegram Desktop "
+            "(внутри неё лежит result.json).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     t1 = time.monotonic()
     print(f"   ✓ {len(messages)} сообщений ({t1 - t0:.1f}с)")
 
@@ -167,13 +188,26 @@ def main() -> None:
         cache_dir = None if args.no_cache else export_dir
         print(f"\n🔊 Загружаю модель '{args.model}' на {args.device}…")
 
-        transcriber = Transcriber(
-            model_size=args.model,
-            device=args.device,
-            language=args.language,
-            beam_size=args.beam_size,
-            cache_dir=cache_dir,
-        )
+        try:
+            transcriber = Transcriber(
+                model_size=args.model,
+                device=args.device,
+                language=args.language,
+                beam_size=args.beam_size,
+                cache_dir=cache_dir,
+            )
+        except Exception as exc:  # noqa: BLE001 — any model-load failure is user-facing
+            print(
+                f"Ошибка: не удалось загрузить модель '{args.model}' "
+                f"на устройстве '{args.device}': {exc}",
+                file=sys.stderr,
+            )
+            print(
+                "   Совет: попробуйте --device cpu или установите CUDA-библиотеки "
+                "(см. README, раздел «Требования»).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         t2 = time.monotonic()
         print(f"   ✓ Модель готова ({t2 - t1:.1f}с)")
 
@@ -189,9 +223,18 @@ def main() -> None:
 
         from tqdm import tqdm  # type: ignore[import-untyped]
 
+        failures: list[str] = []
         try:
             for i, fp in enumerate(tqdm(to_transcribe, desc="Транскрибация", unit="файл")):
-                text = transcriber.transcribe(fp)
+                try:
+                    text = transcriber.transcribe(fp)
+                except Exception as exc:  # noqa: BLE001 — skip one bad file, keep going
+                    failures.append(fp)
+                    print(
+                        f"\n   ⚠ Не удалось расшифровать {Path(fp).name}: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
                 transcripts[fp] = text
                 if (i + 1) % 50 == 0:
                     transcriber.flush_cache()
@@ -205,6 +248,12 @@ def main() -> None:
 
         t3 = time.monotonic()
         print(f"\n   ✓ Расшифровано за {t3 - t2:.1f}с")
+        if failures:
+            print(
+                f"   ⚠ Не удалось расшифровать {len(failures)} из {len(to_transcribe)} файлов; "
+                "они останутся без расшифровки в Markdown.",
+                file=sys.stderr,
+            )
     else:
         print("   Нет файлов для расшифровки")
 
