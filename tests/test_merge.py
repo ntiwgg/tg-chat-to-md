@@ -24,21 +24,27 @@ from src.cache import CACHE_FILE_NAME
 
 OLD_NAME = "ChatExport_2026-07-24 (1)"
 NEW_NAME = "ChatExport_2026-08-10 (1)"
+EXTRA_NAME = "ChatExport_2026-09-01 (1)"
 OLD_AUDIO = "voice_messages/old_voice.ogg"
 NEW_AUDIO = "voice_messages/new_voice.ogg"
+EXTRA_AUDIO = "voice_messages/extra_voice.ogg"
 
 
 # ---------------------------------------------------------------------------
 # fixtures: synthetic exports under tmp_path
 # ---------------------------------------------------------------------------
 def _write_export(
-    root: Path, name: str, messages: list[dict], chat_name: str = "Тестовый чат"
+    root: Path,
+    name: str,
+    messages: list[dict],
+    chat_name: str = "Тестовый чат",
+    chat_id: int = 999,
 ) -> Path:
     """Create an export dir with result.json; return its path."""
     export_dir = root / name
     export_dir.mkdir(parents=True, exist_ok=True)
     (export_dir / "result.json").write_text(
-        json.dumps({"name": chat_name, "id": 999, "messages": messages}, ensure_ascii=False),
+        json.dumps({"name": chat_name, "id": chat_id, "messages": messages}, ensure_ascii=False),
         encoding="utf-8",
     )
     return export_dir
@@ -286,3 +292,113 @@ def test_merge_never_writes_outside_output_path(tmp_path, monkeypatch, capsys):
     for f in produced:
         assert any(f == root or root in f.parents for root in expected_roots)
     assert "Записан" in out
+
+
+# ---------------------------------------------------------------------------
+# --extra: third export merged after --new, its cache migrated against its
+# own root
+# ---------------------------------------------------------------------------
+def test_merge_extra_export_unions_and_reports_per_label(
+    tmp_path, monkeypatch, capsys
+):
+    old_dir = _write_export(
+        tmp_path, OLD_NAME, [_text_message(1, "Из старого", "2026-07-24T10:00:00")]
+    )
+    new_dir = _write_export(
+        tmp_path,
+        NEW_NAME,
+        [
+            _text_message(1, "Дубль старого", "2026-08-10T09:00:00"),
+            _text_message(2, "Из нового", "2026-08-10T10:00:00"),
+            _voice_message(3, EXTRA_AUDIO, "2026-08-10T11:00:00"),
+        ],
+    )
+    extra_dir = _write_export(tmp_path, EXTRA_NAME, [
+        _text_message(2, "Дубль нового", "2026-09-01T09:00:00"),
+        _text_message(4, "Из доп. экспорта", "2026-09-01T10:00:00"),
+        _voice_message(5, EXTRA_AUDIO, "2026-09-01T11:00:00"),
+    ])
+    # The extra export's voice file lives in the extra root...
+    _touch_audio(extra_dir, EXTRA_AUDIO)
+    # ...but the same relative path ALSO exists in the new export: the cache
+    # migration must attach the transcript to the extra root's own file.
+    _touch_audio(new_dir, EXTRA_AUDIO)
+    _write_legacy_cache(extra_dir, {EXTRA_AUDIO: "Расшифровка из доп. экспорта"})
+
+    output_path, out, err = _run_merge(
+        tmp_path, monkeypatch, old_dir, new_dir, extra=[extra_dir], capsys=capsys
+    )
+
+    md = output_path.read_text(encoding="utf-8")
+
+    # Union of ids 1..5 with both duplicates dropped (earlier wins).
+    assert "Из старого" in md
+    assert "Из нового" in md
+    assert "Из доп. экспорта" in md
+    assert "Дубль старого" not in md
+    assert "Дубль нового" not in md
+    assert "Всего уникальных сообщений: 5" in out
+    assert "Дублей отброшено (id уже был в более раннем экспорте): 2" in out
+    # Per-label statistics, including the extra export.
+    assert "Сообщений в старый экспорте: 1" in out
+    assert "Сообщений в новый экспорте: 3" in out
+    assert "Сообщений в доп. 1 экспорте: 3" in out
+    # The extra cache entry resolved against the extra root and reached the
+    # voice message that lives there.
+    assert "> *Расшифровка:* Расшифровка из доп. экспорта" in md
+    assert "Без расшифровки: 1" in out  # the new export's duplicate file lacks a cache
+    assert "Диапазон дат: 2026-07-24T10:00:00 — 2026-09-01T11:00:00" in out
+    assert "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# chat-id mismatch: warning on stdout, merge still completes
+# ---------------------------------------------------------------------------
+def test_merge_different_chat_ids_warns(tmp_path, monkeypatch, capsys):
+    old_dir = _write_export(
+        tmp_path, OLD_NAME, [_text_message(1, "Чат А", "2026-07-24T10:00:00")], chat_id=111
+    )
+    new_dir = _write_export(
+        tmp_path,
+        NEW_NAME,
+        [_text_message(2, "Чат Б", "2026-08-10T10:00:00")],
+        chat_name="Другой чат",
+        chat_id=222,
+    )
+
+    _output_path, out, err = _run_merge(tmp_path, monkeypatch, old_dir, new_dir, capsys=capsys)
+
+    assert "⚠ Разные id чатов: 111, 222" in out
+    assert "Всего уникальных сообщений: 2" in out
+    assert "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# cache precedence contract: shared canonical key -> first export keeps it
+# ---------------------------------------------------------------------------
+def test_merge_cache_collision_keeps_earlier_exports_text() -> None:
+    """Contract pin (not a bug): caches merge with setdefault semantics —
+    'existing keys keep their old value' (_merge_caches docstring), the same
+    earlier-wins rule as message dedupe by id. If the later export holds a
+    different transcript for the same canonical key, the earlier text wins.
+    Order in the merge call follows the CLI: --old, --new, --extra..."""
+    shared_key = "/chat/voice_messages/audio_1.ogg"
+
+    merged = merge_exports._merge_caches(
+        {shared_key: "текст из старого"}, {shared_key: "текст из нового"}
+    )
+
+    assert merged == {shared_key: "текст из старого"}
+
+
+def test_merge_cache_collision_depends_on_argument_order() -> None:
+    """The same contract from the other side: a reversed merge order keeps
+    the first argument's value, mirroring how export order on the CLI decides
+    message dedupe."""
+    shared_key = "/chat/voice_messages/audio_1.ogg"
+
+    merged = merge_exports._merge_caches(
+        {shared_key: "текст из нового"}, {shared_key: "текст из старого"}
+    )
+
+    assert merged == {shared_key: "текст из нового"}
