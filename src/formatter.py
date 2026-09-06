@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime
 
-from .models import Message, TextEntity
+from .models import Message
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -82,7 +82,10 @@ def _format_message(msg: Message, transcripts: dict[str, str], idx: dict[int, Me
     if msg.is_reply and msg.reply_to_message_id:
         replied = idx.get(msg.reply_to_message_id)
         if replied:
-            lines.append(f"> ↩ В ответ на **{replied.from_name or 'Неизвестный'}** ({_format_time(replied.date)}):")
+            replied_name = replied.from_name or "Неизвестный"
+            lines.append(
+                f"> ↩ В ответ на **{replied_name}** ({_format_time(replied.date)}):"
+            )
             reply_quote = _reply_preview(replied, transcripts)
             if reply_quote.strip():
                 lines.append(f">> {reply_quote}")
@@ -95,7 +98,7 @@ def _format_message(msg: Message, transcripts: dict[str, str], idx: dict[int, Me
     # --- Media: voice / round video ---
     if msg.is_voice or msg.is_round_video:
         media_label = "🎤 Голосовое сообщение" if msg.is_voice else "📹 Видеосообщение"
-        duration = f" ({_format_duration(msg.duration_seconds)})" if msg.duration_seconds else ""
+        duration = _duration_suffix(msg.duration_seconds)
         lines.append(f"{header}{duration}")
         lines.append(f"**{media_label}:**")
 
@@ -117,7 +120,7 @@ def _format_message(msg: Message, transcripts: dict[str, str], idx: dict[int, Me
     # --- Media: video file ---
     elif msg.is_video_file:
         fname = f" — *{msg.file_name}*" if msg.file_name else ""
-        duration = f" ({_format_duration(msg.duration_seconds)})" if msg.duration_seconds else ""
+        duration = _duration_suffix(msg.duration_seconds)
         lines.append(f"{header} [🎬 Видео{duration}{fname}]")
 
     # --- Media: animation / GIF ---
@@ -206,23 +209,32 @@ def _reply_preview(msg: Message, transcripts: dict[str, str]) -> str:
     """Get a text preview of a replied-to message, handling all media types."""
     if msg.is_voice:
         t = _find_transcript(msg, transcripts)
-        return f"[🎤 Голосовое{' — ' + t[:150] + '…' if t and len(t) > 150 else (' — ' + t if t else '')}]"
+        return f"[🎤 Голосовое{_transcript_suffix(t)}]"
     if msg.is_round_video:
         t = _find_transcript(msg, transcripts)
-        return f"[📹 Видеосообщение{' — ' + t[:150] + '…' if t and len(t) > 150 else (' — ' + t if t else '')}]"
+        return f"[📹 Видеосообщение{_transcript_suffix(t)}]"
     if msg.is_sticker:
         emoji = f" {msg.sticker_emoji}" if msg.sticker_emoji else ""
         return f"[🎭 Стикер{emoji}]"
     if msg.is_photo:
         return "[📷 Фото]"
     if msg.is_video_file:
-        return f"[🎬 Видео]"
+        return "[🎬 Видео]"
     if msg.is_animation:
         return "[🎞️ GIF]"
     text = msg.plain_text
     if len(text) > 200:
         text = text[:200] + "…"
     return text
+
+
+def _transcript_suffix(text: str | None) -> str:
+    """Transcript excerpt after a media label; '' when there is none."""
+    if not text:
+        return ""
+    if len(text) > 150:
+        return f" — {text[:150]}…"
+    return f" — {text}"
 
 
 def _find_transcript(msg: Message, transcripts: dict[str, str]) -> str | None:
@@ -280,6 +292,13 @@ def _format_duration(seconds: int | None) -> str:
     return f"{m}:{s:02d}"
 
 
+def _duration_suffix(seconds: int | None) -> str:
+    """Format seconds as ' (M:SS)'; empty string when absent."""
+    if not seconds:
+        return ""
+    return f" ({_format_duration(seconds)})"
+
+
 def _format_service(msg: Message, header: str) -> str:
     """Format a service (system) message."""
     match msg.action:
@@ -289,7 +308,7 @@ def _format_service(msg: Message, header: str) -> str:
                 "missed": "Пропущенный",
                 "busy": "Отклонён (занято)",
             }.get(msg.discard_reason or "", "Звонок")
-            duration = f" ({_format_duration(msg.duration_seconds)})" if msg.duration_seconds else ""
+            duration = _duration_suffix(msg.duration_seconds)
             return f"⚡ **Системное**: {reason} звонок от **{msg.actor or '?'}**{duration}"
         case "pin_message":
             return f"⚡ **Системное**: **{msg.actor or '?'}** закрепил сообщение #{msg.message_id}"

@@ -42,7 +42,7 @@ def _setup_cuda_libs() -> None:
     for base in sp_candidates:
         if not os.path.isdir(base):
             continue
-        for root, dirs, _files in os.walk(base):
+        for root, _dirs, _files in os.walk(base):
             if root.endswith("site-packages"):
                 site_packages = root
                 break
@@ -76,14 +76,17 @@ def _setup_cuda_libs() -> None:
 
 _setup_cuda_libs()
 
+from src.formatter import format_markdown
 from src.parser import parse_export
 from src.transcriber import Transcriber
-from src.formatter import format_markdown
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert Telegram Chat Export to a single Markdown file with voice/video transcription.",
+        description=(
+            "Convert Telegram Chat Export to a single Markdown file "
+            "with voice/video transcription."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

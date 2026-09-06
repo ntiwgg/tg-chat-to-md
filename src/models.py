@@ -8,9 +8,13 @@ from typing import Any
 
 @dataclass(slots=True)
 class TextEntity:
-    """A formatted text segment within a message."""
+    """A formatted text segment within a message.
 
-    type: str  # plain, bold, italic, link, text_link, mention, hashtag, phone, custom_emoji, blockquote
+    type is one of: plain, bold, italic, link, text_link, mention,
+    hashtag, phone, custom_emoji, blockquote.
+    """
+
+    type: str
     text: str
 
 
@@ -59,7 +63,8 @@ class Message:
     text_entities: list[TextEntity] = field(default_factory=list)
 
     # -------------------- media --------------------
-    media_type: str | None = None  # voice_message | video_message | sticker | video_file | animation
+    # media kind: voice_message | video_message | sticker | video_file | animation
+    media_type: str | None = None
     file: str | None = None  # relative path or "(File not included...)"
     file_name: str | None = None
     file_size: int | None = None
@@ -159,7 +164,8 @@ class Message:
             return len(self.text.strip()) > 0
         if isinstance(self.text, list):
             return any(
-                (isinstance(t, str) and t.strip()) or (isinstance(t, dict) and t.get("text", "").strip())
+                (isinstance(t, str) and t.strip())
+                or (isinstance(t, dict) and t.get("text", "").strip())
                 for t in self.text
             )
         return False

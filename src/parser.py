@@ -82,18 +82,33 @@ def _parse_message(raw: dict[str, Any], export_root: Path) -> Message:
 
 
 def _parse_text_entities(raw_entities: list[dict[str, Any]]) -> list[TextEntity]:
-    return [TextEntity(type=e["type"], text=e["text"]) for e in raw_entities if "type" in e and "text" in e]
+    return [
+        TextEntity(type=e["type"], text=e["text"])
+        for e in raw_entities
+        if "type" in e and "text" in e
+    ]
 
 
 def _parse_reactions(raw_reactions: list[dict[str, Any]]) -> list[Reaction]:
     result: list[Reaction] = []
     for r in raw_reactions:
-        recent_raw = r.get("recent", []) or []
+        recent_raw = r.get("recent") or []
         recent = [
-            ReactionRecent(from_name=rr.get("from", ""), from_id=rr.get("from_id", ""), date=rr.get("date", ""))
+            ReactionRecent(
+                from_name=rr.get("from", ""),
+                from_id=rr.get("from_id", ""),
+                date=rr.get("date", ""),
+            )
             for rr in recent_raw
         ]
-        result.append(Reaction(type=r.get("type", ""), count=r.get("count", 0), emoji=r.get("emoji", ""), recent=recent))
+        result.append(
+            Reaction(
+                type=r.get("type", ""),
+                count=r.get("count", 0),
+                emoji=r.get("emoji", ""),
+                recent=recent,
+            )
+        )
     return result
 
 

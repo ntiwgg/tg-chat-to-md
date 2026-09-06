@@ -8,13 +8,15 @@ from __future__ import annotations
 import json
 import multiprocessing as mp
 from pathlib import Path
-from typing import override
 
 # ---------------------------------------------------------------------------
 # Graceful import — only crash when we actually try to use the model
 # ---------------------------------------------------------------------------
 try:
-    from faster_whisper import WhisperModel, BatchedInferencePipeline  # type: ignore[import-untyped]
+    from faster_whisper import (  # type: ignore[import-untyped]
+        BatchedInferencePipeline,
+        WhisperModel,
+    )
     HAS_WHISPER = True
 except ImportError:
     HAS_WHISPER = False

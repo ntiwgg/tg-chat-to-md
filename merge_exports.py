@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 from src.formatter import format_markdown
+from src.models import Message
 from src.parser import parse_export
 
 _CACHE_FILE = "_transcripts_cache.json"
@@ -32,12 +33,14 @@ def _read_cache(export_dir: str | Path) -> dict[str, str]:
     try:
         return json.loads(cache_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError(f"Не удалось прочитать кэш расшифровок: {cache_path} ({exc})")
+        raise RuntimeError(
+            f"Не удалось прочитать кэш расшифровок: {cache_path} ({exc})"
+        ) from exc
 
 
-def _merge_messages(*exports: list) -> list:
+def _merge_messages(*exports: list[Message]) -> list[Message]:
     """Merge by id: earlier exports win on collision. Sorted by id."""
-    merged: dict[int, object] = {}
+    merged: dict[int, Message] = {}
     for messages in exports:
         for m in messages:
             merged.setdefault(m.id, m)
@@ -53,7 +56,9 @@ def _merge_caches(*caches: dict[str, str]) -> dict[str, str]:
     return merged
 
 
-def _missing_transcripts(messages, transcripts: dict[str, str]) -> list:
+def _missing_transcripts(
+    messages: list[Message], transcripts: dict[str, str]
+) -> list[Message]:
     """Voice/video messages whose file exists but has no transcript in the cache."""
     return [
         m for m in messages
@@ -68,8 +73,13 @@ def main() -> None:
     )
     parser.add_argument("--old", required=True, help="Oldest export directory (relative path)")
     parser.add_argument("--new", required=True, help="Newer export directory (relative path)")
-    parser.add_argument("--extra", action="append", default=[], help="Additional export directory; may be repeated (merged after --new)")
-    parser.add_argument("--output", default="chat.md", help="Output markdown path (default: chat.md)")
+    parser.add_argument("--extra", action="append", default=[], help=(
+        "Additional export directory; may be repeated (merged after --new)"
+    ))
+    parser.add_argument(
+        "--output", default="chat.md",
+        help="Output markdown path (default: chat.md)",
+    )
     args = parser.parse_args()
 
     export_dirs = [args.old, args.new, *args.extra]
@@ -79,7 +89,9 @@ def main() -> None:
     # Parse every export
     # ------------------------------------------------------------------
     parsed = [parse_export(d) for d in export_dirs]
-    for (_, _, msgs), label, d in zip(parsed, export_labels, export_dirs):
+    for (_, _, msgs), label, d in zip(
+        parsed, export_labels, export_dirs, strict=True
+    ):
         print(f"📖 {label.capitalize()} экспорт: {len(msgs)} сообщений ({d})")
 
     chat_ids = {chat_id for _, chat_id, _ in parsed}
@@ -94,7 +106,10 @@ def main() -> None:
     dropped_duplicates = sum(len(msgs) for msgs in all_messages) - len(messages)
 
     caches = [_read_cache(d) for d in export_dirs]
-    cache_summary = ", ".join(f"{label} {len(cache)} ключей" for label, cache in zip(export_labels, caches))
+    cache_summary = ", ".join(
+        f"{label} {len(cache)} ключей"
+        for label, cache in zip(export_labels, caches, strict=True)
+    )
     print(f"   Кэш расшифровок: {cache_summary}")
     transcripts = _merge_caches(*caches)
 
@@ -121,13 +136,16 @@ def main() -> None:
 
     print()
     print("📊 Статистика:")
-    for label, msgs in zip(export_labels, all_messages):
+    for label, msgs in zip(export_labels, all_messages, strict=True):
         print(f"   Сообщений в {label} экспорте: {len(msgs)}")
     print(f"   Всего уникальных сообщений: {len(messages)}")
     print(f"   Дублей отброшено (id уже был в более раннем экспорте): {dropped_duplicates}")
     print(f"   Диапазон дат: {first.date} — {last.date}")
     print(f"   Голосовых/видеокружков: {voice_total} голосовых, {video_total} видеокружков")
-    print(f"   Без расшифровки: {len(missing)} (из них голосовых {missing_voice}, видеокружков {missing_video})")
+    print(
+        f"   Без расшифровки: {len(missing)} "
+        f"(из них голосовых {missing_voice}, видеокружков {missing_video})"
+    )
 
 
 if __name__ == "__main__":
