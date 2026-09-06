@@ -121,6 +121,8 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
 The `.[dev]` extra installs pytest, ruff, mypy, pytest-cov, and Hypothesis. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["src"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%. Property tests (day-order sorting, cache-key migration) and one-shot mutmut audits (last pass: 768/768 mutants killed) are described in docs/DESIGN.md.
 
+Note: this project was developed with active use of an AI assistant (the deepseek-v4-flash model).
+
 ## Limitations, honestly
 
 - **The document chrome is Russian-first**: day headers use Russian month names and console output is in Russian. Chat content is untouched, but the tool is not localized.
