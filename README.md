@@ -1,9 +1,9 @@
-# TelegramAnaL
+# tg-chat-to-md
 
 Turn a Telegram Desktop chat export into one readable, chronological Markdown file — and transcribe every voice message and round video to text with faster-whisper, locally, no cloud.
 
 <!-- REPLACE USER with your GitHub username after pushing -->
-[![CI](https://github.com/USER/TelegramAnaL/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/TelegramAnaL/actions/workflows/ci.yml)
+[![CI](https://github.com/USER/tg-chat-to-md/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/tg-chat-to-md/actions/workflows/ci.yml)
 [![Python 3.11 | 3.12 | 3.13 | 3.14](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -32,8 +32,8 @@ This is real output from the committed demo export (`examples/sample_export/`), 
 Bold entities survive, replies become quote blocks, voice messages carry duration + transcript. Run it yourself:
 
 ```bash
-pip install .                    # once — exposes the `telegram-to-md` command
-telegram-to-md examples/sample_export
+pip install .                    # once — exposes the `tg-chat-to-md` and `tg-chat-merge` commands
+tg-chat-to-md examples/sample_export
 ```
 
 That regenerates the file above in under a second: no model download, no network, no GPU. It exercises the real parse → transcribe → format pipeline, just with nothing to transcribe.
@@ -46,14 +46,14 @@ That regenerates the file above in under a second: no model download, no network
 - **Replies, forwards, reactions, edits, service messages** — reply quotes with author/time/preview (including a transcript excerpt when the reply target is a voice note), forwarded-from markers, reaction counts with names, "(отредактировано …)" timestamps, and system lines for calls (completed / missed / rejected) and pinned messages.
 - **Proper Markdown escaping** — `*`, `_`, `` ` ``, `[`, `]` and `\` in user text never break the document; Telegram entities (bold, italic, mentions, hashtags, phone numbers, links) map to Markdown.
 - **Robust to missing media** — Telegram's `(File not included…)` / `(File unavailable…)` placeholders and files absent from disk keep their message in the output; transcription is simply skipped.
-- **`merge_exports.py`** — glue overlapping partial exports of the same chat (e.g. from different dates) into one chronological document, deduplicated by message id, with caches combined.
+- **`tg-chat-merge`** — glue overlapping partial exports of the same chat (e.g. from different dates) into one chronological document, deduplicated by message id, with caches combined.
 
 ## Install
 
 Python 3.11+.
 
 ```bash
-pip install .                    # from the repo root; installs the `telegram-to-md` command
+pip install .                    # from the repo root; installs the `tg-chat-to-md` command
 pip install -e ".[dev]"          # same + pytest, pytest-cov, ruff, mypy
 ```
 
@@ -62,9 +62,9 @@ The first real transcription downloads the chosen Whisper weights via faster-whi
 ## Usage
 
 ```bash
-telegram-to-md "ChatExport_2026-07-24 (1)/"
-telegram-to-md "ChatExport_2026-07-24 (1)/" --model small --output chat.md
-telegram-to-md "ChatExport_2026-07-24 (1)/" --device cpu
+tg-chat-to-md "ChatExport_2026-07-24 (1)/"
+tg-chat-to-md "ChatExport_2026-07-24 (1)/" --model small --output chat.md
+tg-chat-to-md "ChatExport_2026-07-24 (1)/" --device cpu
 ```
 
 | Argument | Meaning | Default |
@@ -79,13 +79,23 @@ telegram-to-md "ChatExport_2026-07-24 (1)/" --device cpu
 
 There is deliberately **no `--workers` and no `--cpu` flag** — they were removed in a refactor. CPU mode is chosen with `--device cpu`; parallelism lives inside ctranslate2 (`cpu_threads` defaults to half your cores, `num_workers=2`). On CUDA, pip-installed NVIDIA libraries are preloaded automatically so ctranslate2 can find them.
 
+Merging overlapping exports of one chat is the `tg-chat-merge` command (the same parse → merge-caches → format pipeline, no transcription):
+
+```bash
+tg-chat-merge --old "ChatExport_2026-07-24 (1)" \
+              --new "ChatExport_2026-08-10 (1)" \
+              --output chat.md          # repeat --extra "…" for further exports
+```
+
+Unpackaged, either tool runs through its module: `python -m tg_chat_to_md` for the main CLI and `python -m tg_chat_to_md.merge` for the merge helper.
+
 ## How it works
 
-**1. Parse.** `src/parser.py` reads `result.json` into typed `Message` dataclasses (`src/models.py`). Media paths are resolved to canonical absolute paths — the same key doubles as the transcription-cache key, so results never depend on where you ran the command from.
+**1. Parse.** `tg_chat_to_md/parser.py` reads `result.json` into typed `Message` dataclasses (`tg_chat_to_md/models.py`). Media paths are resolved to canonical absolute paths — the same key doubles as the transcription-cache key, so results never depend on where you ran the command from.
 
 **2. Transcribe.** The CLI collects every voice message and round video, loads the Whisper model once, and transcribes each file — skipping cache hits. Progress goes through tqdm; a Ctrl-C flushes the cache so hours of GPU work are never lost.
 
-**3. Format.** `src/formatter.py` renders messages to Markdown: day groups with Russian headers in true chronological order, reply quote blocks, media markers, reactions, edits, service messages. One file is written to `<export_dir>/chat.md` (or your `--output`).
+**3. Format.** `tg_chat_to_md/formatter.py` renders messages to Markdown: day groups with Russian headers in true chronological order, reply quote blocks, media markers, reactions, edits, service messages. One file is written to `<export_dir>/chat.md` (or your `--output`).
 
 ## The transcript cache
 
@@ -100,27 +110,32 @@ Stored next to the export as `<export_dir>/_transcripts_cache.json`:
 ## Project layout
 
 ```
-telegram_to_md.py        CLI entry point: args, Parse → Transcribe → Format, cache flushing
-src/parser.py            result.json → Message objects; canonical media path resolution
-src/models.py            dataclasses: Message, TextEntity, Reaction, ReactionRecent, LocationInfo
-src/transcriber.py       faster-whisper GPU/CPU transcription; cache load/migrate/flush
-src/formatter.py         Message → Markdown: day groups, replies, service messages, entities
-merge_exports.py         merge overlapping exports of one chat; dedup by id; combine caches
-examples/sample_export/  synthetic demo export + its generated chat.md (privacy-safe)
-tests/                   210 hermetic tests — no audio, no model, no network
+tg_chat_to_md/            the package (import name: tg_chat_to_md)
+  cli.py                  CLI entry point: args, Parse → Transcribe → Format, cache flushing
+  __main__.py             enables `python -m tg_chat_to_md`
+  merge.py                merge overlapping exports of one chat; dedup by id; combine caches
+  parser.py               result.json → Message objects; canonical media path resolution
+  models.py               dataclasses: Message, TextEntity, Reaction, ReactionRecent, LocationInfo
+  transcriber.py          faster-whisper GPU/CPU transcription; cache load/migrate/flush
+  formatter.py            Message → Markdown: day groups, replies, service messages, entities
+  cache.py                shared transcript-cache I/O: read/write/migrate (atomic, per-export keys)
+examples/sample_export/   synthetic demo export + its generated chat.md (privacy-safe)
+tests/                    210 hermetic tests — no audio, no model, no network
 ```
+
+Console scripts installed from the package: `tg-chat-to-md` (cli.py) and `tg-chat-merge` (merge.py).
 
 ## Development
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest tests/          # 210 tests, hermetic: model & decoding are stubbed
-.venv/bin/python -m pytest --cov           # coverage gate: fail_under 95% on src, per pyproject.toml
+.venv/bin/python -m pytest --cov           # coverage gate: fail_under 95% on tg_chat_to_md
 .venv/bin/ruff check .
-.venv/bin/mypy src telegram_to_md.py merge_exports.py
+.venv/bin/mypy                             # strict config from pyproject.toml
 ```
 
-The `.[dev]` extra installs pytest, ruff, mypy, pytest-cov, and Hypothesis. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["src"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%. Property tests (day-order sorting, cache-key migration) and one-shot mutmut audits (last pass: 768/768 mutants killed) are described in docs/DESIGN.md.
+The `.[dev]` extra installs pytest, ruff, mypy, pytest-cov, and Hypothesis. Lint and type rules live in `pyproject.toml` (ruff, strict mypy), and the coverage gate is configured there too: `[tool.coverage.run] source = ["tg_chat_to_md"]` with `fail_under = 95` — so `pytest --cov` fails the run below 95%. Property tests (day-order sorting, cache-key migration) and one-shot mutmut audits (last pass: 768/768 mutants killed) are described in docs/DESIGN.md.
 
 Note: this project was developed with active use of an AI assistant (the deepseek-v4-flash model).
 
@@ -131,7 +146,7 @@ Note: this project was developed with active use of an AI assistant (the deepsee
 - **No automatic CUDA→CPU fallback** — if model init fails on CUDA the run stops with exit code 1 and a hint; retry with `--device cpu`.
 - **The output is a snapshot**: no per-message anchors/permalink ids — search the file instead. It is one-way; don't expect to round-trip back into Telegram.
 - **GPU is the default device** and recommended for large chats (`--device cpu` works but is slower). The `medium` default is a reasonable speed/quality midpoint — pick `small` for speed, `large-v3` for quality.
-- **`merge_exports.py` combines caches, it doesn't fill them** — files missing from every source export are reported in the statistics and stay without transcripts (there is no re-transcription pass).
+- **`tg-chat-merge` combines caches, it doesn't fill them** — files missing from every source export are reported in the statistics and stay without transcripts (there is no re-transcription pass).
 
 ## Privacy
 

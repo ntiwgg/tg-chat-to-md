@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to TelegramAnaL are documented in this file.
+All notable changes to tg-chat-to-md are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -13,10 +13,10 @@ Nothing yet
 
 ### Added
 
-- `telegram-to-md` CLI: parse → transcribe → format pipeline from a Telegram Desktop export to one chronological Markdown file.
+- `tg-chat-to-md` CLI: parse → transcribe → format pipeline from a Telegram Desktop export to one chronological Markdown file.
 - faster-whisper transcription of voice messages and round videos — GPU (batched, `float16`) and CPU (`int8` + VAD) modes.
 - Durable JSON transcript cache with canonical absolute-path keys and automatic migration of legacy relative keys.
-- `merge_exports.py` helper: combine overlapping partial exports of the same chat, deduplicated by message id.
+- `tg-chat-merge` helper (module `tg_chat_to_md/merge.py`): combine overlapping partial exports of the same chat, deduplicated by message id.
 - MIT license and project metadata (`requires-python >= 3.11`, ruff + strict mypy config, dev extra).
 - Synthetic privacy-safe demo export in `examples/sample_export/` — no personal data, no media files, no model download.
 - Golden-master test: regenerated demo output is byte-identical to the committed `chat.md`.
@@ -30,6 +30,7 @@ Nothing yet
 
 ### Changed
 
+- Project renamed from telegramanal to tg-chat-to-md; code moved from a top-level `src` package into `tg_chat_to_md`; merge helper is now the `tg-chat-merge` console script.
 - Cache writes batched every 50 files plus on clean exit and Ctrl-C, instead of after every file.
 - Partial transcription failures now exit with code 1; the Markdown artifact is still written, but scripts can detect that the run was incomplete.
 - Cache keys canonicalized via `Path.resolve()` — results no longer depend on the working directory.
@@ -37,8 +38,8 @@ Nothing yet
 - README rewritten from scratch as an English case study.
 - Media message captions are now rendered in the Markdown output.
 - Code entities now render as inline backticks.
-- Cache corruption policy unified in shared `src/cache.py`: warn and start empty, never crash.
-- `merge_exports.py` migrates legacy cache keys against each source export root before combining.
+- Cache corruption policy unified in the shared transcript-cache module (`tg_chat_to_md/cache.py`): warn and start empty, never crash.
+- The merge helper migrates legacy cache keys against each source export root before combining.
 
 ### Fixed
 
@@ -47,7 +48,7 @@ Nothing yet
 - Media captions were silently dropped from the output.
 - Crash on `text: null` inside entity segments.
 - Crash on non-dict cache JSON (e.g. a list or string in `_transcripts_cache.json`).
-- `IndexError` in `merge_exports.py` on empty exports; empty merges are guarded.
+- `IndexError` in the merge helper on empty exports; empty merges are guarded.
 - `migrate_cache_keys` kept dead keys that matched nothing on disk.
 - Code entities were rendered as plain text, breaking code formatting in the output.
 - Call service messages with an unknown outcome rendered as "Звонок звонок"; the fallback label is now "Неизвестный".
