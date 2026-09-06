@@ -34,13 +34,14 @@ Telegram Desktop export folder (result.json + media files)
              |                |    { canonical file path: text }
              |                |    path == msg.file == cache key
              |                |                  |
-             |                |       +----------+-----------+
-             |                |       | <export_dir>/        |
-             |                |       | _transcripts_cache.json |
-             |                |       | batched flush:       |
-             |                |       | every 50 files, exit,|
-             |                |       | Ctrl-C               |
-             |                |       +----------------------+
+              |                |       +----------+-----------+
+              |                |       | <export_dir>/        |
+              |                |       | _transcripts_cache.json |
+              |                |       | I/O: src/cache (shared)|
+              |                |       | batched flush:       |
+              |                |       | every 50 files, exit,|
+              |                |       | Ctrl-C               |
+              |                |       +----------------------+
              |                |
              v                v
      +------------------------------------------+
@@ -67,7 +68,8 @@ merge_exports.py --old --new [--extra ...]
   merge messages by id -- earlier export wins (dict.setdefault)
         |
         v
-  merge each export's _transcripts_cache.json (setdefault, keys as-is)
+  merge transcripts: each export's cache read via shared src.cache,
+  keys migrated against that export's own root, then setdefault-merged
         |
         v
   single format_markdown pass -> --output chat.md (default ./chat.md)
@@ -77,12 +79,12 @@ merge_exports.py --old --new [--extra ...]
 
 - **Message lifecycle.** `result.json` (JSON) → `src.parser.parse_export` builds `Message` dataclasses and sorts them by id, which is the export's chronological order. The CLI then derives two auxiliary structures from the message list: a reply index `{message_id: Message}` and the list of files to transcribe (messages with `media_type` `voice_message` or `video_message` whose `file` is set).
 - **File paths as identity.** `Message.file` is not the raw export-relative string from the JSON. The parser resolves it to a canonical absolute path (`Path.resolve()`) and stores it as a `str`; media placeholders (`"(File not included..."`, `"(File unavailable..."`) and files missing from disk become `None`. The formatter looks transcripts up by `msg.file`, the transcriber's in-memory cache uses the same strings, and the on-disk cache uses them as keys — one canonical string is the join point of all three.
-- **Cache.** Persisted at `<export_dir>/_transcripts_cache.json` (compact JSON, `ensure_ascii=False`). `--no-cache` simply passes `cache_dir=None`, so nothing is read or written. Writes are batched (see decision b). The transcriber migrates legacy keys once per load (see decision a); `merge_exports` does not — it reads caches as-is.
+- **Cache.** Persisted at `<export_dir>/_transcripts_cache.json` (compact JSON, `ensure_ascii=False`). All cache I/O is implemented once, in the shared module `src/cache.py` (`read_cache`, `write_cache`, `migrate_cache_keys`, `CACHE_FILE_NAME`), which both `src.transcriber` and `merge_exports` import *(6bf73ea)* — a past bug was the two tools drifting apart on cache semantics. `--no-cache` simply passes `cache_dir=None`, so nothing is read or written. Writes are batched (see decision b). Both consumers migrate legacy keys on load (see decision a): the transcriber against its export root, `merge_exports` against each source export's own root.
 
 ## Key decisions & trade-offs
 
-**a) Canonical absolute cache keys + automatic legacy migration** *(755efb8)*
-*Decision:* every media path is `(export_root / file).resolve()` before it becomes a `Message.file` and a cache key; on load, `_migrate_cache_keys` re-keys legacy relative entries by dropping leading path components until the remainder points to an existing file.
+**a) Canonical absolute cache keys + automatic legacy migration** *(755efb8, generalized in 6bf73ea)*
+*Decision:* every media path is `(export_root / file).resolve()` before it becomes a `Message.file` and a cache key. Cache I/O and key migration live in the shared module `src/cache.py` — `read_cache`, `write_cache`, `migrate_cache_keys` — used by `src.transcriber` and `merge_exports` alike *(6bf73ea)*. On load, `migrate_cache_keys` re-keys legacy relative entries by dropping leading path components until the remainder points to an existing file; `merge_exports` runs it per source export, against that export's own root, before merging the caches.
 *Why:* the cache must not depend on the CWD or on how `export_dir` was typed (relative vs. absolute). Running from a different directory must hit the same cache, or long GPU jobs get silently re-run.
 *Trade-off:* keys embed the folder location, so physically moving the export folder invalidates entries and forces re-transcription. Accepted; the migration runs once per load and drops entries that match no file.
 
@@ -125,11 +127,11 @@ merge_exports.py --old --new [--extra ...]
 
 | Failure | Behavior |
 |---|---|
-| Corrupt/unreadable cache JSON | `src.transcriber` silently starts empty — files are simply re-transcribed (or reported). `merge_exports` is deliberately stricter: its cache read raises `RuntimeError`, because a merge run has no transcription phase, so a silently empty cache would permanently drop transcripts from the output. |
+| Corrupt/unreadable cache JSON | Both tools share the `src/cache.py` read path: the cache degrades to empty with a warning on stderr — never an exception *(6bf73ea)*. The transcriber re-transcribes the affected files (or reports them); `merge_exports` proceeds with the surviving caches and counts the missing transcripts in its statistics. |
 | Missing `result.json` | `parse_export` raises `FileNotFoundError("result.json not found in ...")`; the CLI pre-checks the directory and exits 1 with a clear message. |
 | Media file referenced but absent on disk | Resolves to `None`; the message renders with a media label and "(расшифровка недоступна)" instead of crashing. |
 | Reply to a deleted message | Counted and reported as a warning ("N ответов ссылаются на удалённые сообщения"); the reply quote is omitted in the document. |
-| Merge of exports that are all empty | **Unprotected today:** the statistics block reads `messages[0]` / `messages[-1]` unconditionally and would raise `IndexError`. An empty-export guard is an open TODO. |
+| Merge of exports that are all empty | Guarded: the statistics block reads `messages[0]` / `messages[-1]` only when the merged list is non-empty; an all-empty merge reports `нет сообщений (пустой результат)` and finishes cleanly *(6bf73ea)*. |
 | `KeyboardInterrupt` mid-transcription | Cache flushed, progress printed, exit code 1 — completed transcripts survive. |
 | faster-whisper not installed | Import is wrapped (`HAS_WHISPER`), so `src.transcriber` stays importable for tests; constructing a `Transcriber` raises `RuntimeError` with a `pip install faster-whisper` hint. |
 
@@ -140,8 +142,7 @@ merge_exports.py --old --new [--extra ...]
 - **No automatic CPU fallback**: if CUDA model init fails the run crashes with the underlying error; `--device cpu` is a manual retry. Candidate improvement.
 - **Russian-first UI**: console output, day headers, and placeholders are Russian; transcription defaults to `ru`. One `--language` per run — mixed-language chats need a second pass.
 - **Whole-document output**: every run regenerates one `chat.md`; there is no incremental formatting.
-- **Merge limitations**: `merge_exports` neither transcribes missing files (it only reports them) nor migrates legacy cache keys.
-- **Empty-merge guard** from the table above is the most immediate correctness gap.
+- **Merge limitations**: `merge_exports` does not transcribe missing files — it only reports them in the statistics, so files absent from every source cache stay without transcripts.
 
 ---
 
