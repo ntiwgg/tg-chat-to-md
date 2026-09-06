@@ -6,6 +6,7 @@ Supports GPU (CUDA) and CPU modes, with JSON caching to avoid re-transcribing.
 from __future__ import annotations
 
 import multiprocessing as mp
+from collections.abc import Sequence
 from pathlib import Path
 
 from .cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache, write_cache
@@ -32,6 +33,8 @@ class Transcriber:
     Usage:
         t = Transcriber(model_size="medium", device="cuda")
         text = t.transcribe("voice.ogg")
+        done = t.cached_count(files)      # files already in cache
+        todo = t.missing_from_cache(files)  # files still needing transcription
     """
 
     def __init__(
@@ -100,6 +103,16 @@ class Transcriber:
 
         self._cache[fp] = text
         return text
+
+    # ------------------------------------------------------------------
+    def cached_count(self, filepaths: Sequence[str]) -> int:
+        """Number of given filepaths already present in the cache."""
+        return sum(1 for fp in filepaths if fp in self._cache)
+
+    # ------------------------------------------------------------------
+    def missing_from_cache(self, filepaths: Sequence[str]) -> list[str]:
+        """Given filepaths not yet in the cache, in their original order."""
+        return [fp for fp in filepaths if fp not in self._cache]
 
     # ------------------------------------------------------------------
     def flush_cache(self) -> None:

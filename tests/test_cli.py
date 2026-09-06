@@ -75,6 +75,25 @@ def _make_voice_export(tmp_path: Path, n: int = 2) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Transcriber stub seam
+# ---------------------------------------------------------------------------
+class _CacheAwareTranscriber:
+    """Shared fake for the CLI's Transcriber seam: an in-memory cache plus the
+    public stats API (cached_count, missing_from_cache) that
+    telegram_to_md.main drives. Subclasses add call recording / faults."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        self._cache: dict[str, str] = {}
+        self._cache_path: Path | None = None
+
+    def cached_count(self, filepaths: list[str]) -> int:
+        return sum(1 for fp in filepaths if fp in self._cache)
+
+    def missing_from_cache(self, filepaths: list[str]) -> list[str]:
+        return [fp for fp in filepaths if fp not in self._cache]
+
+
+# ---------------------------------------------------------------------------
 # argparse surface: real flags accepted, dead flags rejected
 # ---------------------------------------------------------------------------
 def test_device_cpu_parses_fine() -> None:
@@ -129,9 +148,12 @@ def test_transcriber_import_smoke_and_cli_seam() -> None:
     load without faster-whisper installed — every subprocess CLI test below
     relies on it). The class-level callable check documents the seam the
     in-process tests stub: telegram_to_md.main drives instances through
-    exactly transcribe(filepath) and flush_cache()."""
+    transcribe(filepath), flush_cache(), cached_count(...) and
+    missing_from_cache(...)."""
     assert callable(transcriber_mod.Transcriber.transcribe)
     assert callable(transcriber_mod.Transcriber.flush_cache)
+    assert callable(transcriber_mod.Transcriber.cached_count)
+    assert callable(transcriber_mod.Transcriber.missing_from_cache)
 
 
 # ---------------------------------------------------------------------------
@@ -224,12 +246,8 @@ def test_per_file_failure_skips_and_continues(tmp_path, monkeypatch, capsys) -> 
     # Drop the progress bar so test output stays clean (tqdm imported inside main).
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _FakeTranscriber:
+    class _FakeTranscriber(_CacheAwareTranscriber):
         """No model: cache-empty stub that fails on exactly one file."""
-
-        def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
 
         def transcribe(self, fp: str) -> str:
             if Path(fp).name == "voice_1.ogg":
@@ -265,11 +283,7 @@ def test_per_file_success_writes_no_failure_summary(tmp_path, monkeypatch, capsy
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _FakeTranscriber:
-        def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
-
+    class _FakeTranscriber(_CacheAwareTranscriber):
         def transcribe(self, fp: str) -> str:
             return "единственная расшифровка"
 
@@ -307,13 +321,12 @@ def test_cache_flushes_every_n_files_and_on_exit(tmp_path, monkeypatch) -> None:
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _RecordingTranscriber:
+    class _RecordingTranscriber(_CacheAwareTranscriber):
         """Records every transcribe call and the transcribed-file snapshot
         at every flush_cache call (filesystem-effect assertion)."""
 
         def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
+            super().__init__(*args, **kwargs)
             self.transcribed: list[str] = []
             self.flush_snapshots: list[list[str]] = []
 
@@ -349,11 +362,10 @@ def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
     instances: list = []
 
-    class _WiringTranscriber:
+    class _WiringTranscriber(_CacheAwareTranscriber):
         def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
             self.cache_dir = kwargs.get("cache_dir")
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
             self.calls = 0
             instances.append(self)
 
@@ -390,6 +402,55 @@ def test_no_cache_flag_wiring_and_one_transcribe_call_per_file(
         assert instance.calls == 2  # one transcribe call per media file
 
 
+def test_cache_hits_are_counted_and_not_re_transcribed(tmp_path, monkeypatch, capsys) -> None:
+    """Cache-hit reporting flows through the public stats API: a file already
+    in the cache is counted on stdout ("📦 … уже в кэше"), reported as missing
+    by the count of the "Расшифровываю" line, and its cached text lands in the
+    markdown without a second transcribe() call."""
+    import telegram_to_md as cli
+
+    export_dir = _make_voice_export(tmp_path, n=2)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    cached_file = str((export_dir / "voice_messages" / "voice_1.ogg").resolve())
+
+    class _CachingTranscriber(_CacheAwareTranscriber):
+        """Mirrors the real short-circuit: cache hits never reach the model."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.transcribed: list[str] = []
+
+        def transcribe(self, fp: str) -> str:
+            if fp in self._cache:
+                return self._cache[fp]
+            self.transcribed.append(fp)
+            return "новая расшифровка"
+
+        def flush_cache(self) -> None:
+            pass
+
+    stub = _CachingTranscriber()
+    stub._cache = {cached_file: "расшифровка из кэша"}
+    monkeypatch.setattr(cli, "Transcriber", lambda *a, **kw: stub)
+
+    cli.main()
+
+    assert stub.transcribed == [str((export_dir / "voice_messages" / "voice_2.ogg").resolve())]
+    out = capsys.readouterr().out
+    assert "1 файлов уже в кэше" in out
+    assert "🎤 Расшифровываю 1 файлов…" in out
+    md = output_path.read_text(encoding="utf-8")
+    assert "> *Расшифровка:* расшифровка из кэша" in md
+    assert "> *Расшифровка:* новая расшифровка" in md
+
+
 def test_keyboard_interrupt_flushes_cache_and_exits_1(tmp_path, monkeypatch) -> None:
     """Ctrl-C mid-run must persist the partial cache (durability) and exit 1
     without writing the markdown."""
@@ -404,10 +465,9 @@ def test_keyboard_interrupt_flushes_cache_and_exits_1(tmp_path, monkeypatch) -> 
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _InterruptingTranscriber:
+    class _InterruptingTranscriber(_CacheAwareTranscriber):
         def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
+            super().__init__(*args, **kwargs)
             self.transcribed = 0
             self.flushes = 0
 
@@ -455,10 +515,9 @@ def test_flush_failure_warns_and_run_completes(tmp_path, monkeypatch, capsys) ->
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _FlushBrokenTranscriber:
+    class _FlushBrokenTranscriber(_CacheAwareTranscriber):
         def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
+            super().__init__(*args, **kwargs)
             self.transcribed = 0
 
         def transcribe(self, fp: str) -> str:
@@ -499,10 +558,9 @@ def test_keyboard_interrupt_with_failing_flush_still_exits_1_cleanly(
     )
     monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
 
-    class _InterruptingBrokenFlush:
+    class _InterruptingBrokenFlush(_CacheAwareTranscriber):
         def __init__(self, *args, **kwargs) -> None:
-            self._cache: dict[str, str] = {}
-            self._cache_path: Path | None = None
+            super().__init__(*args, **kwargs)
             self.transcribed = 0
 
         def transcribe(self, fp: str) -> str:

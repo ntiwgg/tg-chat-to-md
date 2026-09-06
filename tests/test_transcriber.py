@@ -204,6 +204,37 @@ def test_init_without_cache_dir_stays_in_memory_only(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# public cache stats API (cached_count / missing_from_cache)
+# ---------------------------------------------------------------------------
+def _bare_transcriber_with_cache(cache: dict[str, str]) -> Transcriber:
+    """A Transcriber instance without the whisper model: the stats methods
+    only read the private cache dict, so object.__new__ skips __init__."""
+    t = object.__new__(Transcriber)
+    t._cache = cache
+    return t
+
+
+def test_cached_count_reports_exactly_the_cached_filepaths() -> None:
+    t = _bare_transcriber_with_cache({"a.ogg": "текст", "b.ogg": "текст"})
+
+    assert t.cached_count(["a.ogg", "b.ogg", "c.ogg"]) == 2
+    assert t.cached_count(["c.ogg", "d.ogg"]) == 0
+    assert t.cached_count(["a.ogg"]) == 1
+    assert t.cached_count([]) == 0
+
+
+def test_missing_from_cache_lists_only_absent_filepaths_in_order() -> None:
+    t = _bare_transcriber_with_cache({"a.ogg": "текст", "b.ogg": "текст"})
+
+    assert t.missing_from_cache(["a.ogg", "b.ogg"]) == []
+    assert t.missing_from_cache(["a.ogg", "b.ogg", "c.ogg", "d.ogg"]) == ["c.ogg", "d.ogg"]
+    # order of the INPUT is preserved, not the cache's
+    assert t.missing_from_cache(["c.ogg", "a.ogg", "d.ogg"]) == ["c.ogg", "d.ogg"]
+    assert t.missing_from_cache([]) == []
+
+
+
+# ---------------------------------------------------------------------------
 # transcribe(): call-argument contract per device
 # ---------------------------------------------------------------------------
 def test_transcribe_cpu_forwards_language_beam_and_vad_filter(monkeypatch) -> None:

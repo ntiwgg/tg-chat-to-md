@@ -231,15 +231,15 @@ def main() -> None:
         t2 = time.monotonic()
         print(f"   ✓ Модель готова ({t2 - t1:.1f}с)")
 
-        # Check cache hits
+        # Check cache hits (public stats API — never touch transcriber._cache)
         if not args.no_cache:
-            cached = sum(1 for fp in to_transcribe if fp in transcriber._cache)
+            cached = transcriber.cached_count(to_transcribe)
             if cached:
                 print(f"   📦 {cached} файлов уже в кэше")
 
-        remaining = [fp for fp in to_transcribe if fp not in transcriber._cache]
-        if remaining:
-            print(f"\n🎤 Расшифровываю {len(remaining)} файлов…")
+        missing = transcriber.missing_from_cache(to_transcribe)
+        if missing:
+            print(f"\n🎤 Расшифровываю {len(missing)} файлов…")
 
         from tqdm import tqdm  # type: ignore[import-untyped]
 
