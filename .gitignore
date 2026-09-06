@@ -28,3 +28,4 @@ __pycache__/
 
 # mutmut sandbox (mutated sources + run cache)
 /mutants/
+.mutmut-cache

@@ -1,7 +1,18 @@
 [project]
 name = "telegramanal"
 version = "0.1.0"
+description = "Convert Telegram chat exports to Markdown with local Whisper speech-to-text"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+keywords = [
+    "telegram",
+    "whisper",
+    "speech-to-text",
+    "transcription",
+    "markdown",
+    "cli",
+]
 dependencies = [
     "faster-whisper>=1.0",
     "tqdm>=4.0",
