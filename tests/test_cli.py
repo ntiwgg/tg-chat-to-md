@@ -278,3 +278,54 @@ def test_per_file_success_writes_no_failure_summary(tmp_path, monkeypatch, capsy
     assert "недоступна" not in md
     err = capsys.readouterr().err
     assert "Не удалось расшифровать" not in err
+
+
+# ---------------------------------------------------------------------------
+# flush cadence: CACHE_FLUSH_EVERY shrunk via monkeypatch, real main() loop
+# ---------------------------------------------------------------------------
+def test_cache_flushes_every_n_files_and_on_exit(tmp_path, monkeypatch) -> None:
+    """REGRESSION guard for the batching policy: the cache is persisted after
+    every CACHE_FLUSH_EVERY files and once more in the finally block. Runs the
+    real main() transcription loop in-process — no model, recording stub."""
+    import telegram_to_md as cli
+
+    n_files = 4
+    export_dir = _make_voice_export(tmp_path, n=n_files)
+    output_path = tmp_path / "out.md"
+    monkeypatch.setattr(cli, "CACHE_FLUSH_EVERY", 2)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["telegram_to_md.py", str(export_dir), "--output", str(output_path)],
+    )
+    monkeypatch.setattr("tqdm.tqdm", lambda iterable, **kwargs: iterable)
+
+    class _RecordingTranscriber:
+        """Records every transcribe call and the transcribed-file snapshot
+        at every flush_cache call (filesystem-effect assertion)."""
+
+        def __init__(self, *args, **kwargs) -> None:
+            self._cache: dict[str, str] = {}
+            self._cache_path: Path | None = None
+            self.transcribed: list[str] = []
+            self.flush_snapshots: list[list[str]] = []
+
+        def transcribe(self, fp: str) -> str:
+            self.transcribed.append(fp)
+            return f"текст {len(self.transcribed)}"
+
+        def flush_cache(self) -> None:
+            self.flush_snapshots.append(list(self.transcribed))
+
+    recorder = _RecordingTranscriber()
+    monkeypatch.setattr(cli, "Transcriber", lambda *a, **kw: recorder)
+
+    cli.main()
+
+    assert len(recorder.transcribed) == n_files  # once per file
+    # Cadence 2 with 4 files: flush after file 2, after file 4, then finally.
+    assert [len(s) for s in recorder.flush_snapshots] == [2, 4, 4]
+    # The markdown carries every transcript.
+    md = output_path.read_text(encoding="utf-8")
+    for i in range(1, n_files + 1):
+        assert f"> *Расшифровка:* текст {i}" in md

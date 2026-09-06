@@ -24,6 +24,11 @@ import time
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+# Flush the transcript cache to disk after every N transcribed files (plus on
+# exit and on KeyboardInterrupt). Kept as a module constant so tests can
+# shrink the cadence instead of transcribing 50 files.
+CACHE_FLUSH_EVERY = 50
+
 
 def _cli_version() -> str:
     """Version of the installed distribution; dev fallback when run unpackaged."""
@@ -236,7 +241,7 @@ def main() -> None:
                     )
                     continue
                 transcripts[fp] = text
-                if (i + 1) % 50 == 0:
+                if (i + 1) % CACHE_FLUSH_EVERY == 0:
                     transcriber.flush_cache()
         except KeyboardInterrupt:
             print("\n⚠ Прервано пользователем. Сохраняю кэш…")
