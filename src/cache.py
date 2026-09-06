@@ -29,8 +29,10 @@ CACHE_FILE_NAME = "_transcripts_cache.json"
 def read_cache(cache_path: Path) -> dict[str, str]:
     """Read a cache file; empty dict when the file is missing or corrupt.
 
-    A corrupt file is reported on stderr (so the user knows transcripts will
-    be missing) but treated as empty — the caller can rebuild it on flush.
+    A corrupt file — unparseable JSON or JSON that is not an object ([],
+    string, number): cache entries are key→transcript pairs, so any other
+    shape is garbage — is reported on stderr (so the user knows transcripts
+    will be missing) but treated as empty: the caller can rebuild it on flush.
     """
     if not cache_path.exists():
         return {}
@@ -39,6 +41,13 @@ def read_cache(cache_path: Path) -> dict[str, str]:
     except (json.JSONDecodeError, OSError) as exc:
         print(
             f"⚠ Кэш расшифровок повреждён, начинаю с пустого: {cache_path} ({exc})",
+            file=sys.stderr,
+        )
+        return {}
+    if not isinstance(data, dict):
+        print(
+            f"⚠ Кэш расшифровок повреждён, начинаю с пустого: {cache_path} "
+            "(ожидался JSON-объект)",
             file=sys.stderr,
         )
         return {}

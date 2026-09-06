@@ -239,6 +239,33 @@ def test_merge_corrupt_cache_warns_and_continues(tmp_path, monkeypatch, capsys):
     assert "Traceback" not in err
 
 
+def test_merge_non_object_cache_warns_and_continues(tmp_path, monkeypatch, capsys):
+    """REGRESSION: a structurally valid non-dict cache ([]) crashed
+    migrate_cache_keys on .items() during merge. It must degrade like any
+    other corrupt cache: warning on stderr, merge completes."""
+    old_dir = _write_export(
+        tmp_path,
+        OLD_NAME,
+        [_voice_message(7, OLD_AUDIO, "2026-07-24T10:00:00")],
+    )
+    _touch_audio(old_dir, OLD_AUDIO)
+    (old_dir / CACHE_FILE_NAME).write_text("[]", encoding="utf-8")
+    new_dir = _write_export(
+        tmp_path,
+        NEW_NAME,
+        [_text_message(8, "Свежий пост", "2026-08-10T10:00:00")],
+    )
+
+    output_path, out, err = _run_merge(tmp_path, monkeypatch, old_dir, new_dir, capsys=capsys)
+
+    assert "Кэш расшифровок повреждён" in err
+    md = output_path.read_text(encoding="utf-8")
+    assert "> *(расшифровка недоступна)*" in md
+    assert "Без расшифровки: 1" in out
+    assert "Свежий пост" in md
+    assert "Traceback" not in err
+
+
 # ---------------------------------------------------------------------------
 # output goes only where --output says
 # ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@ Covers:
 import json
 from pathlib import Path
 
+import pytest
+
 import src.transcriber as transcriber_mod
 from src.cache import migrate_cache_keys, read_cache
 from src.parser import _resolve_file
@@ -272,3 +274,35 @@ def test_broken_cache_json_reads_as_empty(tmp_path) -> None:
 
 def test_missing_cache_file_reads_as_empty(tmp_path) -> None:
     assert read_cache(tmp_path / "_transcripts_cache.json") == {}
+
+
+@pytest.mark.parametrize("raw", ["[]", '"x"', "42"])
+def test_non_object_cache_json_degrades_to_empty(tmp_path, raw) -> None:
+    """REGRESSION: syntactically valid non-dict JSON ([] / string / number)
+    passed json.loads untouched and crashed migrate_cache_keys on .items().
+    A structurally valid cache must be a dict; anything else is corrupt."""
+    cache_file = tmp_path / "_transcripts_cache.json"
+    cache_file.write_text(raw, encoding="utf-8")
+
+    assert read_cache(cache_file) == {}
+
+
+@pytest.mark.parametrize("raw", ["[]", '"x"', "42"])
+def test_transcriber_init_survives_non_object_cache(tmp_path, monkeypatch, raw) -> None:
+    export, audio1, _audio2 = _make_export(tmp_path)
+    cache_file = export / "_transcripts_cache.json"
+    cache_file.write_text(raw, encoding="utf-8")
+    model = _StubModel("текст из модели")
+    monkeypatch.setattr(transcriber_mod, "WhisperModel", lambda *a, **k: model)
+
+    t = Transcriber(model_size="tiny", device="cpu", cache_dir=export)  # must not crash
+
+    # The degraded cache is empty, so transcribe takes the real model path...
+    text = t.transcribe(str(audio1.resolve()))
+    assert text == "текст из модели"
+    assert model.calls == 1
+    # ...and flush persists a proper dict cache over the corrupt file.
+    t.flush_cache()
+    assert json.loads(cache_file.read_text(encoding="utf-8")) == {
+        str(audio1.resolve()): "текст из модели"
+    }
