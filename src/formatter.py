@@ -116,28 +116,35 @@ def _format_message(msg: Message, transcripts: dict[str, str], idx: dict[int, Me
         else:
             lines.append("> *(расшифровка недоступна)*")
 
+        _append_caption(msg, lines)
+
     # --- Media: sticker ---
     elif msg.is_sticker:
         emoji = f" {msg.sticker_emoji}" if msg.sticker_emoji else ""
         lines.append(f"{header} [🎭 Стикер{emoji}]")
+        _append_caption(msg, lines)
 
     # --- Media: photo ---
     elif msg.is_photo:
         lines.append(f"{header} [📷 Фото]")
+        _append_caption(msg, lines)
 
     # --- Media: video file ---
     elif msg.is_video_file:
         fname = f" — *{msg.file_name}*" if msg.file_name else ""
         duration = _duration_suffix(msg.duration_seconds)
         lines.append(f"{header} [🎬 Видео{duration}{fname}]")
+        _append_caption(msg, lines)
 
     # --- Media: animation / GIF ---
     elif msg.is_animation:
         lines.append(f"{header} [🎞️ GIF]")
+        _append_caption(msg, lines)
 
     # --- Media: generic file ---
     elif msg.file_name and not msg.media_type:
         lines.append(f"{header} [📎 Файл: *{msg.file_name}*]")
+        _append_caption(msg, lines)
 
     # --- Plain text / text with media ---
     else:
@@ -170,6 +177,18 @@ def _format_message(msg: Message, transcripts: dict[str, str], idx: dict[int, Me
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _append_caption(msg: Message, lines: list[str]) -> None:
+    """Append a media caption (msg.text) rendered like plain message text.
+
+    Telegram stores captions of media messages in the same text/text_entities
+    fields as regular message bodies; the media branches must render them
+    through the same path as the plain-text branch below, or they are silently
+    lost. Messages without text produce no line.
+    """
+    if msg.has_text:
+        lines.append(_format_text(msg))
+
+
 def _format_text(msg: Message) -> str:
     """Convert message text + entities into Markdown."""
     if not msg.text_entities:

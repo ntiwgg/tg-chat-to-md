@@ -42,6 +42,19 @@ def _render(msg: Message, transcripts: dict[str, str] | None = None, idx=None) -
     return md
 
 
+def _body_lines(md: str) -> list[str]:
+    """Body lines of a single-message document (document header/day stripped).
+
+    An empty message text renders nothing extra, so a body of exactly one
+    line means the message is header-only.
+    """
+    return [
+        line
+        for line in md.splitlines()
+        if line and not line.startswith(("## ", "---"))
+    ][1:]  # first non-empty line is the "# Чат: ..." document title
+
+
 def _entities(*pairs: tuple[str, str]) -> list[TextEntity]:
     return [TextEntity(type=t, text=s) for t, s in pairs]
 
@@ -349,6 +362,67 @@ def test_round_video_message_renders() -> None:
 
     assert "**📹 Видеосообщение:**" in md
     assert "> *(расшифровка недоступна)*" in md
+
+
+def test_voice_message_caption_renders_below_media_block() -> None:
+    """REGRESSION: captions on media messages were silently dropped — the
+    media branches never rendered msg.text. The caption must appear in the
+    output, rendered through the same entity path as plain messages."""
+    voice = _full(
+        1,
+        media_type="voice_message",
+        file="chat/voice.ogg",
+        duration_seconds=14,
+        text="Скажи спасибо котику",
+    )
+
+    md = _render(voice)
+
+    assert _body_lines(md) == [
+        "**10:00** | **Аня** (0:14)",
+        "**🎤 Голосовое сообщение:**",
+        "> *(расшифровка недоступна)*",
+        "Скажи спасибо котику",
+    ]
+
+
+def test_voice_message_caption_entities_are_formatted() -> None:
+    voice = _full(
+        1,
+        media_type="voice_message",
+        file="chat/voice.ogg",
+        duration_seconds=14,
+        text=["Скажи ", {"type": "bold", "text": "спасибо"}, " котику"],
+        text_entities=_entities(("plain", "Скажи "), ("bold", "спасибо"), ("plain", " котику")),
+    )
+
+    md = _render(voice, transcripts={"chat/voice.ogg": "привет"})
+
+    assert _body_lines(md) == [
+        "**10:00** | **Аня** (0:14)",
+        "**🎤 Голосовое сообщение:**",
+        "> *Расшифровка:* привет",
+        "Скажи **спасибо** котику",
+    ]
+
+
+def test_photo_caption_renders_after_label() -> None:
+    photo = _full(1, photo="(File not included)", text="Наш плед и термос")
+
+    md = _render(photo)
+
+    assert _body_lines(md) == [
+        "**10:00** | **Аня** [📷 Фото]",
+        "Наш плед и термос",
+    ]
+
+
+def test_media_without_caption_renders_no_text_line() -> None:
+    sticker = _full(1, media_type="sticker", sticker_emoji="👋", text=None)
+
+    md = _render(sticker)
+
+    assert _body_lines(md) == ["**10:00** | **Аня** [🎭 Стикер 👋]"]
 
 
 def test_sticker_photo_video_animation_and_generic_file() -> None:
