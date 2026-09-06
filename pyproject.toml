@@ -46,6 +46,15 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.mutmut]
+# One-shot quality audit (Phase 4): mutate the src package, run the real test
+# suite against every mutant. Mutation score is a review input, not a CI gate.
+source_paths = ["src/"]
+pytest_add_cli_args_test_selection = ["tests/"]
+# Root console-script modules and the golden sample data must follow the
+# mutated sources into the mutants/ sandbox or their tests cannot run.
+also_copy = ["examples", "telegram_to_md.py", "merge_exports.py"]
+
 [tool.coverage.run]
 source = ["src"]
 

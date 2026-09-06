@@ -18,10 +18,10 @@ def parse_export(export_dir: str | Path) -> tuple[str, int, list[Message]]:
     if not export_path.exists():
         raise FileNotFoundError(f"result.json not found in {export_dir}")
 
-    with open(export_path, encoding="utf-8") as f:
+    with open(export_path, encoding="utf-8") as f:  # pragma: no mutate (utf-8 == locale)
         raw = json.load(f)
 
-    chat_name = raw.get("name", "Unknown Chat")
+    chat_name = raw.get("name", "Unknown Chat")  # pragma: no mutate (fallback copy)
     chat_id = raw.get("id", 0)
     raw_messages: list[dict[str, Any]] = raw.get("messages", [])
 

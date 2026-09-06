@@ -39,7 +39,7 @@ def read_cache(cache_path: Path) -> dict[str, str]:
     if not cache_path.exists():
         return {}
     try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        data = json.loads(cache_path.read_text(encoding="utf-8"))  # pragma: no mutate
     except (json.JSONDecodeError, OSError) as exc:
         print(
             f"⚠ Кэш расшифровок повреждён, начинаю с пустого: {cache_path} ({exc})",
@@ -68,15 +68,15 @@ def write_cache(cache_path: Path, data: dict[str, str]) -> None:
     the original OSError propagates (fail loud: a cache that cannot be written
     means transcription progress will not survive this run).
     """
-    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))  # pragma: no mutate
     tmp_path = cache_path.with_name(cache_path.name + ".tmp")
     try:
-        tmp_path.write_text(payload, encoding="utf-8")
+        tmp_path.write_text(payload, encoding="utf-8")  # pragma: no mutate
         os.replace(tmp_path, cache_path)
     except OSError:
         # Best-effort cleanup: a failed write must not litter .tmp files.
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):  # pragma: no mutate (OSError either way)
+            tmp_path.unlink(missing_ok=True)  # pragma: no mutate (suppressed anyway)
         raise
 
 

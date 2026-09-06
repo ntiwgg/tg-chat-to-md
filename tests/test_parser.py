@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from src.models import Reaction, TextEntity
-from src.parser import parse_export
+from src.parser import _parse_message, parse_export
 
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "examples" / "sample_export"
 
@@ -145,7 +145,7 @@ def test_parse_export_missing_result_json_raises(tmp_path) -> None:
     empty_dir = tmp_path / "ChatExport_empty"
     empty_dir.mkdir()
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match="result.json not found in"):
         parse_export(empty_dir)
 
 
@@ -245,3 +245,259 @@ def test_parse_export_null_text_entity_coalesces_to_empty_string(tmp_path) -> No
     assert entity.text == ""
     assert messages[0].has_text is False
     assert messages[0].plain_text == ""
+
+
+# ---------------------------------------------------------------------------
+# mutation oracles: full-field round trip and absent-key defaults
+# ---------------------------------------------------------------------------
+def _full_raw_message(export_root: Path, voice_path: Path, thumb_path: Path) -> dict:
+    """A message raw dict carrying EVERY Message field (no defaults active).
+
+    file/thumbnail must point at real files, otherwise resolution returns
+    None and the round trip could not tell a dropped field from a resolved
+    None. Values are chosen to differ from every field default, so a parser
+    mutation that skips, renames, or defaults any lookup changes the result.
+    """
+    return {
+        "id": 42,
+        "type": "message",
+        "date": "2026-07-24T10:00:00",
+        "date_unixtime": "1784916000",
+        "from": "Аня",
+        "from_id": "user42",
+        "text": [{"type": "bold", "text": "привет"}, " мир"],
+        "text_entities": [
+            {"type": "bold", "text": "привет"},
+            {"type": "text_link", "text": "пример"},
+        ],
+        "media_type": "voice_message",
+        "file": str(voice_path.relative_to(export_root)),
+        "file_name": "audio.ogg",
+        "file_size": 1234,
+        "mime_type": "audio/ogg",
+        "duration_seconds": 61,
+        "thumbnail": str(thumb_path.relative_to(export_root)),
+        "photo": "photo.jpg",
+        "photo_file_size": 99,
+        "width": 640,
+        "height": 480,
+        "sticker_emoji": "🎈",
+        "forwarded_from": "Лес и парк",
+        "forwarded_from_id": "channel9",
+        "reply_to_message_id": 7,
+        "reactions": [
+            {
+                "type": "emoji",
+                "count": 3,
+                "emoji": "🔥",
+                "recent": [
+                    {"from": "Ира", "from_id": "user1", "date": "2026-07-24T10:00:00"},
+                    {"from": "Петя", "from_id": "user2", "date": "2026-07-24T10:05:00"},
+                ],
+            }
+        ],
+        "edited": "2026-07-24T11:00:00",
+        "edited_unixtime": "1784919600",
+        "action": "phone_call",
+        "actor": "Аня",
+        "actor_id": "user42",
+        "message_id": 5,
+        "discard_reason": "busy",
+        "via_bot": "BotFather",
+        "self_destruct_period_seconds": 10,
+        "location_information": {"latitude": 55.75, "longitude": 37.61},
+        "live_location_period_seconds": 300,
+    }
+
+
+def test_parse_message_round_trips_every_field(tmp_path) -> None:
+    """One message carrying every field, parsed and asserted attribute-wise.
+
+    This is the exact oracle for the parser's mapping layer: a mutation that
+    drops a call, replaces it with None, or corrupts a lookup key must change
+    at least one asserted attribute. Absent-key defaults are covered by
+    test_parse_export_minimal_document_defaults below.
+    """
+    voice = tmp_path / "voice.ogg"
+    thumb = tmp_path / "thumb.jpg"
+    voice.write_bytes(b"x")
+    thumb.write_bytes(b"x")
+    raw = _full_raw_message(tmp_path, voice, thumb)
+
+    msg = _parse_message(raw, tmp_path)
+
+    assert msg.id == 42
+    assert msg.type == "message"
+    assert msg.date == "2026-07-24T10:00:00"
+    assert msg.date_unixtime == "1784916000"
+    assert msg.from_name == "Аня"
+    assert msg.from_id == "user42"
+    assert msg.text == [{"type": "bold", "text": "привет"}, " мир"]
+    assert [(e.type, e.text) for e in msg.text_entities] == [
+        ("bold", "привет"),
+        ("text_link", "пример"),
+    ]
+    assert msg.media_type == "voice_message"
+    assert msg.file == str(voice.resolve())
+    assert msg.file_name == "audio.ogg"
+    assert msg.file_size == 1234
+    assert msg.mime_type == "audio/ogg"
+    assert msg.duration_seconds == 61
+    assert msg.thumbnail == str(thumb.resolve())
+    assert msg.photo == "photo.jpg"
+    assert msg.photo_file_size == 99
+    assert msg.width == 640
+    assert msg.height == 480
+    assert msg.sticker_emoji == "🎈"
+    assert msg.forwarded_from == "Лес и парк"
+    assert msg.forwarded_from_id == "channel9"
+    assert msg.reply_to_message_id == 7
+    assert msg.edited == "2026-07-24T11:00:00"
+    assert msg.edited_unixtime == "1784919600"
+    assert msg.action == "phone_call"
+    assert msg.actor == "Аня"
+    assert msg.actor_id == "user42"
+    assert msg.message_id == 5
+    assert msg.discard_reason == "busy"
+    assert msg.via_bot == "BotFather"
+    assert msg.self_destruct_period_seconds == 10
+    assert msg.live_location_period_seconds == 300
+
+    assert len(msg.reactions) == 1
+    reaction = msg.reactions[0]
+    assert (reaction.type, reaction.count, reaction.emoji) == ("emoji", 3, "🔥")
+    assert [(r.from_name, r.from_id, r.date) for r in reaction.recent] == [
+        ("Ира", "user1", "2026-07-24T10:00:00"),
+        ("Петя", "user2", "2026-07-24T10:05:00"),
+    ]
+    assert msg.location_information is not None
+    assert (msg.location_information.latitude, msg.location_information.longitude) == (
+        55.75,
+        37.61,
+    )
+
+
+def test_parse_export_minimal_document_defaults(tmp_path) -> None:
+    """An export and a message with every optional key absent: the parser must
+    apply its documented defaults ("" / 0 / [] / None) instead of crashing."""
+    export_dir = tmp_path / "ChatExport_minimal"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"id": 1, "type": "message", "reactions": [{"recent": [{}]}]}
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    chat_name, chat_id, messages = parse_export(export_dir)
+
+    assert chat_name == "Unknown Chat"
+    assert chat_id == 0
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg.date == ""
+    assert msg.date_unixtime == ""
+    assert msg.from_name is None
+    assert msg.text is None
+    assert msg.media_type is None
+    assert msg.file is None
+    assert msg.edited is None
+    assert msg.forwarded_from is None
+    assert msg.reply_to_message_id is None
+    # the sole reaction is key-less, and its "recent" entry is too
+    reaction = msg.reactions[0]
+    assert reaction.type == ""
+    assert reaction.count == 0
+    assert reaction.emoji == ""
+    assert [(r.from_name, r.from_id, r.date) for r in reaction.recent] == [
+        ("", "", "")
+    ]
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    ["(File not included by export)", "(File unavailable)"],
+)
+def test_resolve_file_placeholder_prefix_wins_over_existing_file(tmp_path, placeholder) -> None:
+    """Placeholder detection must not depend on disk contents: even if a file
+    with a placeholder name exists, the reference resolves to None."""
+    export_dir = tmp_path / "ChatExport_placeholder_on_disk"
+    export_dir.mkdir()
+    media = export_dir / placeholder
+    media.write_bytes(b"x")
+    (export_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "name": "Тест",
+                "id": 1,
+                "messages": [
+                    {
+                        "id": 1,
+                        "type": "message",
+                        "date": "2026-07-24T10:00:00",
+                        "date_unixtime": "0",
+                        "media_type": "voice_message",
+                        "file": placeholder,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _chat_name, _chat_id, messages = parse_export(export_dir)
+
+    assert messages[0].file is None
+
+
+def test_text_entity_missing_text_key_is_filtered_out(tmp_path) -> None:
+    """An entity dict that lacks 'text' entirely is not an entity: it must be
+    filtered out (and OR here would include it with an empty string)."""
+    export_dir = tmp_path / "ChatExport_entity_no_text"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "name": "Тест",
+                "id": 1,
+                "messages": [
+                    {
+                        "id": 1,
+                        "type": "message",
+                        "date": "2026-07-24T10:00:00",
+                        "date_unixtime": "0",
+                        "text_entities": [{"type": "bold"}],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _chat_name, _chat_id, messages = parse_export(export_dir)
+
+    assert messages[0].text_entities == []
+
+
+def test_parse_export_without_messages_key_returns_empty(tmp_path) -> None:
+    """A result.json with no 'messages' key at all parses to an empty chat
+    (the parser must not crash on the missing key)."""
+    export_dir = tmp_path / "ChatExport_no_messages"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps({"name": "Тест", "id": 1}),
+        encoding="utf-8",
+    )
+
+    chat_name, chat_id, messages = parse_export(export_dir)
+
+    assert chat_name == "Тест"
+    assert chat_id == 1
+    assert messages == []

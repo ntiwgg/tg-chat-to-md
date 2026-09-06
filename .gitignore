@@ -25,3 +25,6 @@ __pycache__/
 /chat.md.bak_*
 /analysis*
 /analysis_notes/
+
+# mutmut sandbox (mutated sources + run cache)
+/mutants/

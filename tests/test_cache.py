@@ -320,7 +320,7 @@ def test_missing_cache_file_reads_as_empty(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("raw", ["[]", '"x"', "42"])
-def test_non_object_cache_json_degrades_to_empty(tmp_path, raw) -> None:
+def test_non_object_cache_json_degrades_to_empty(tmp_path, raw, capsys) -> None:
     """REGRESSION: syntactically valid non-dict JSON ([] / string / number)
     passed json.loads untouched and crashed migrate_cache_keys on .items().
     A structurally valid cache must be a dict; anything else is corrupt."""
@@ -328,6 +328,10 @@ def test_non_object_cache_json_degrades_to_empty(tmp_path, raw) -> None:
     cache_file.write_text(raw, encoding="utf-8")
 
     assert read_cache(cache_file) == {}
+
+    err = capsys.readouterr().err
+    assert "⚠ Кэш расшифровок повреждён, начинаю с пустого:" in err
+    assert " (ожидался JSON-объект)\n" in err  # standalone literal, not embedded in a wrapper
 
 
 @pytest.mark.parametrize("raw", ["[]", '"x"', "42"])

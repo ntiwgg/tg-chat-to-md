@@ -612,3 +612,115 @@ def test_edited_marker_appended() -> None:
         "**10:00** | **Аня**: Было",
         "  *(отредактировано 10:05)*",
     ]
+
+
+# ---------------------------------------------------------------------------
+# mutation oracles: captions on every caption-capable media kind, media
+# headers without optional metadata, and reply previews of media messages
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("fields", "label_line"),
+    [
+        (
+            dict(media_type="sticker", sticker_emoji="👋", file="s.webp", text="кот"),
+            "**10:00** | **Аня** [🎭 Стикер 👋]",
+        ),
+        (
+            dict(media_type="animation", file="chat/a.gif", text="так и было"),
+            "**10:00** | **Аня** [🎞️ GIF]",
+        ),
+        (
+            dict(file_name="отчёт.pdf", file="chat/отчёт.pdf", text="читай"),
+            "**10:00** | **Аня** [📎 Файл: *отчёт.pdf*]",
+        ),
+    ],
+)
+def test_media_kind_caption_renders_after_label(fields, label_line) -> None:
+    """The _append_caption call in every media branch must render msg.text —
+    a mutation dropping the lines list crashes or loses the caption."""
+    md = _render(_full(1, **fields))
+
+    assert _body_lines(md) == [label_line, fields["text"]]
+
+
+def test_video_file_without_name_renders_bare_label() -> None:
+    """file_name is optional: a nameless video_file header must not gain an
+    empty or placeholder file segment."""
+    clip = _full(1, media_type="video_file", file="chat/clip.mp4", duration_seconds=47, text=None)
+
+    md = _render(clip)
+
+    assert _body_lines(md) == ["**10:00** | **Аня** [🎬 Видео (0:47)]"]
+
+
+def test_round_video_reply_preview_quotes_label_with_transcript() -> None:
+    video = _full(
+        5,
+        from_name="Вера",
+        media_type="video_message",
+        file="chat/video.mp4",
+        duration_seconds=9,
+        text=None,
+    )
+    reply = _full(6, text="Спасибо!", reply_to_message_id=5)
+
+    md = _render(reply, transcripts={"chat/video.mp4": "иди сюда"}, idx={5: video})
+
+    assert _body_lines(md) == [
+        "> ↩ В ответ на **Вера** (10:00):",
+        ">> [📹 Видеосообщение — иди сюда]",
+        "**10:00** | **Аня**: Спасибо!",
+    ]
+
+
+def test_round_video_reply_preview_without_transcript_has_no_suffix() -> None:
+    video = _full(
+        5,
+        from_name="Вера",
+        media_type="video_message",
+        file="chat/video.mp4",
+        duration_seconds=9,
+        text=None,
+    )
+    reply = _full(6, text="Спасибо!", reply_to_message_id=5)
+
+    md = _render(reply, transcripts={}, idx={5: video})
+
+    assert _body_lines(md) == [
+        "> ↩ В ответ на **Вера** (10:00):",
+        ">> [📹 Видеосообщение]",
+        "**10:00** | **Аня**: Спасибо!",
+    ]
+
+
+def test_sticker_reply_preview_quotes_emoji_when_present() -> None:
+    sticker = _full(
+        5,
+        from_name="Вера",
+        media_type="sticker",
+        sticker_emoji="👋",
+        file="s.webp",
+        text=None,
+    )
+    reply = _full(6, text="Спасибо!", reply_to_message_id=5)
+
+    md = _render(reply, transcripts={}, idx={5: sticker})
+
+    assert _body_lines(md) == [
+        "> ↩ В ответ на **Вера** (10:00):",
+        ">> [🎭 Стикер 👋]",
+        "**10:00** | **Аня**: Спасибо!",
+    ]
+
+
+def test_sticker_reply_preview_without_emoji_has_bare_label() -> None:
+    sticker = _full(5, from_name="Вера", media_type="sticker", file="s.webp", text=None)
+    reply = _full(6, text="Спасибо!", reply_to_message_id=5)
+
+    md = _render(reply, transcripts={}, idx={5: sticker})
+
+    assert _body_lines(md) == [
+        "> ↩ В ответ на **Вера** (10:00):",
+        ">> [🎭 Стикер]",
+        "**10:00** | **Аня**: Спасибо!",
+    ]
