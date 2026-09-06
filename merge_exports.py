@@ -15,27 +15,12 @@ The --extra flag may be repeated to merge additional exports after --new.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache
 from src.formatter import format_markdown
 from src.models import Message
 from src.parser import parse_export
-
-_CACHE_FILE = "_transcripts_cache.json"
-
-
-def _read_cache(export_dir: str | Path) -> dict[str, str]:
-    """Read the transcript cache of an export; empty dict when missing or broken."""
-    cache_path = Path(export_dir) / _CACHE_FILE
-    if not cache_path.exists():
-        return {}
-    try:
-        return json.loads(cache_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError(
-            f"Не удалось прочитать кэш расшифровок: {cache_path} ({exc})"
-        ) from exc
 
 
 def _merge_messages(*exports: list[Message]) -> list[Message]:
@@ -105,7 +90,15 @@ def main() -> None:
     messages = _merge_messages(*all_messages)
     dropped_duplicates = sum(len(msgs) for msgs in all_messages) - len(messages)
 
-    caches = [_read_cache(d) for d in export_dirs]
+    # Each cache is migrated against the export directory it came from (its
+    # own root), so legacy export-relative keys still land on the canonical
+    # absolute keys that parsed messages use. Corrupt or missing caches read
+    # as empty (with a stderr warning from read_cache) — transcripts are then
+    # simply absent, and the statistics below report them as missing.
+    caches = [
+        migrate_cache_keys(read_cache(Path(d) / CACHE_FILE_NAME), Path(d))
+        for d in export_dirs
+    ]
     cache_summary = ", ".join(
         f"{label} {len(cache)} ключей"
         for label, cache in zip(export_labels, caches, strict=True)
@@ -127,7 +120,11 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Statistics
     # ------------------------------------------------------------------
-    first, last = messages[0], messages[-1]
+    if messages:
+        first, last = messages[0], messages[-1]
+        date_range = f"{first.date} — {last.date}"
+    else:
+        date_range = "нет сообщений (пустой результат)"
     voice_total = sum(1 for m in messages if m.is_voice and m.file)
     video_total = sum(1 for m in messages if m.is_round_video and m.file)
     missing = _missing_transcripts(messages, transcripts)
@@ -140,7 +137,7 @@ def main() -> None:
         print(f"   Сообщений в {label} экспорте: {len(msgs)}")
     print(f"   Всего уникальных сообщений: {len(messages)}")
     print(f"   Дублей отброшено (id уже был в более раннем экспорте): {dropped_duplicates}")
-    print(f"   Диапазон дат: {first.date} — {last.date}")
+    print(f"   Диапазон дат: {date_range}")
     print(f"   Голосовых/видеокружков: {voice_total} голосовых, {video_total} видеокружков")
     print(
         f"   Без расшифровки: {len(missing)} "
