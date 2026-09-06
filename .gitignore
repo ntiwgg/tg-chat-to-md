@@ -6,6 +6,7 @@ __pycache__/
 .playwright-mcp/
 .omo/
 .DS_Store
+.coverage
 
 # Logs
 *.log

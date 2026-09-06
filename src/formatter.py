@@ -307,7 +307,7 @@ def _format_service(msg: Message, header: str) -> str:
                 "hangup": "Завершён",
                 "missed": "Пропущенный",
                 "busy": "Отклонён (занято)",
-            }.get(msg.discard_reason or "", "Звонок")
+            }.get(msg.discard_reason or "", "Неизвестный")
             duration = _duration_suffix(msg.duration_seconds)
             return f"⚡ **Системное**: {reason} звонок от **{msg.actor or '?'}**{duration}"
         case "pin_message":
