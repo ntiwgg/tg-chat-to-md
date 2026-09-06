@@ -83,7 +83,9 @@ def _parse_message(raw: dict[str, Any], export_root: Path) -> Message:
 
 def _parse_text_entities(raw_entities: list[dict[str, Any]]) -> list[TextEntity]:
     return [
-        TextEntity(type=e["type"], text=e["text"])
+        # text may be null in real exports; coalesce at the boundary so the
+        # TextEntity invariant holds: text is always a str.
+        TextEntity(type=e["type"], text=e.get("text") or "")
         for e in raw_entities
         if "type" in e and "text" in e
     ]

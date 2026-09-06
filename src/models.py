@@ -165,7 +165,9 @@ class Message:
         if isinstance(self.text, list):
             return any(
                 (isinstance(t, str) and t.strip())
-                or (isinstance(t, dict) and t.get("text", "").strip())
+                # Entity segments may carry null or non-str "text"; only a
+                # non-blank string segment contributes text.
+                or (isinstance(t, dict) and isinstance(t.get("text"), str) and t["text"].strip())
                 for t in self.text
             )
         return False
@@ -183,7 +185,9 @@ class Message:
                 if isinstance(item, str):
                     parts.append(item)
                 elif isinstance(item, dict):
-                    parts.append(item.get("text", ""))
+                    # Entity segments may carry a null "text" in real exports;
+                    # coalesce it like an empty string rather than crashing.
+                    parts.append(item.get("text") or "")
             return "".join(parts)
         return ""
 

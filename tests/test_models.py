@@ -39,6 +39,13 @@ def test_has_text_list_with_entity_dicts() -> None:
     assert _message(text=[{"type": "bold", "text": "   "}]).has_text is False
 
 
+def test_has_text_entity_with_null_text_does_not_crash() -> None:
+    """REGRESSION: {'type': 'bold', 'text': None} hit .strip() on None."""
+    assert _message(text=[{"type": "bold", "text": None}]).has_text is False
+    mixed = ["Привет", {"type": "bold", "text": None}]
+    assert _message(text=mixed).has_text is True
+
+
 def test_has_text_none() -> None:
     assert _message(text=None).has_text is False
 
@@ -85,6 +92,13 @@ def test_plain_text_entities_bold_link_mention_code() -> None:
 
 def test_plain_text_none_is_empty() -> None:
     assert _message(text=None).plain_text == ""
+
+
+def test_plain_text_entity_with_null_text_coalesces_to_empty() -> None:
+    """REGRESSION: {'type': 'bold', 'text': None} broke the "".join."""
+    msg = _message(text=["A", {"type": "bold", "text": None}, "B"])
+    assert msg.plain_text == "AB"
+    assert _message(text=[{"type": "bold", "text": None}]).plain_text == ""
 
 
 # ---------------------------------------------------------------------------

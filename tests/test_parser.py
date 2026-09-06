@@ -187,3 +187,38 @@ def test_parse_export_missing_file_on_disk_is_none(tmp_path) -> None:
     _chat_name, _chat_id, messages = parse_export(export_dir)
 
     assert messages[0].file is None
+
+
+def test_parse_export_null_text_entity_coalesces_to_empty_string(tmp_path) -> None:
+    """Entity segments with a null 'text' must parse to '' (never None), so
+    the formatter's _escape_md never sees a None text."""
+    export_dir = tmp_path / "ChatExport_null_entity"
+    export_dir.mkdir()
+    (export_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "name": "Тест",
+                "id": 1,
+                "messages": [
+                    {
+                        "id": 1,
+                        "type": "message",
+                        "date": "2026-07-24T10:00:00",
+                        "date_unixtime": "0",
+                        "text": [{"type": "bold", "text": None}],
+                        "text_entities": [{"type": "bold", "text": None}],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _chat_name, _chat_id, messages = parse_export(export_dir)
+
+    entity = messages[0].text_entities[0]
+    assert entity.type == "bold"
+    assert entity.text == ""
+    assert messages[0].has_text is False
+    assert messages[0].plain_text == ""
