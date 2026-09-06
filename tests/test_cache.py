@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 import src.transcriber as transcriber_mod
-from src.cache import migrate_cache_keys, read_cache
+from src.cache import CACHE_FILE_NAME, migrate_cache_keys, read_cache
 from src.parser import _resolve_file
 from src.transcriber import Transcriber
 
@@ -55,15 +55,21 @@ class _StubSegment:
 
 
 class _StubModel:
-    """Stand-in for the faster-whisper model: returns fixed segments."""
+    """Stand-in for the faster-whisper model: returns fixed segments.
 
-    def __init__(self, text: str = "привет мир") -> None:
+    A real model yields one segment per utterance; a stub that emits exactly
+    one segment makes join regressions (" ".join collapsing into "".join or
+    "\\n".join) invisible, so tests may inject several padded segments.
+    """
+
+    def __init__(self, text: str = "привет мир", segments: list[str] | None = None) -> None:
         self.text = text
+        self.segments = segments if segments is not None else [text]
         self.calls = 0
 
     def transcribe(self, filepath, language=None, beam_size=None, vad_filter=None):
         self.calls += 1
-        return iter([_StubSegment(self.text)]), None
+        return iter(_StubSegment(s) for s in self.segments), None
 
 
 def _transcriber_with_stub_model(cache_path: Path | None) -> tuple[Transcriber, _StubModel]:
@@ -197,7 +203,6 @@ def test_transcribe_does_not_write_cache_file_until_flush(tmp_path) -> None:
 
     assert text == "привет мир"
     assert not cache_file.exists()  # per-file write must not happen
-    assert t._cache == {str(audio): text}
 
     t.flush_cache()
     assert cache_file.exists()
@@ -210,22 +215,43 @@ def test_transcribe_does_not_write_cache_file_until_flush(tmp_path) -> None:
 
 def test_transcribe_cache_hit_skips_model(tmp_path) -> None:
     audio = _touch(tmp_path / VOICE_SUBDIR / "audio_1.ogg")
+    cache_file = tmp_path / "_transcripts_cache.json"
+    t, stub = _transcriber_with_stub_model(cache_file)
+
+    t.transcribe(str(audio))
+    t.transcribe(str(audio))
+
+    assert stub.calls == 1  # the second call was served from the in-memory cache
+    t.flush_cache()
+    # Exactly one canonical key was persisted.
+    assert json.loads(cache_file.read_text(encoding="utf-8")) == {str(audio): "привет мир"}
+
+
+def test_transcribe_joins_multi_segment_output_with_single_spaces(tmp_path) -> None:
+    """REGRESSION: with a single-segment stub, a ' '.join collapsing into
+    ''.join or '\\n'.join was invisible. Three padded segments must come back
+    stripped, in order, joined by exactly one space each."""
+    audio = _touch(tmp_path / VOICE_SUBDIR / "audio_1.ogg")
     t, stub = _transcriber_with_stub_model(tmp_path / "_transcripts_cache.json")
+    stub.segments = [" первый ", " второй", "третий  "]
 
-    t.transcribe(str(audio))
-    t.transcribe(str(audio))
+    text = t.transcribe(str(audio))
 
+    assert text == "первый второй третий"
     assert stub.calls == 1
-    assert t._cache[str(audio)] == "привет мир"
+    assert "  " not in text and "\n" not in text
 
 
-def test_flush_cache_is_noop_without_cache_dir(tmp_path) -> None:
+def test_flush_cache_without_cache_dir_writes_no_file_anywhere(tmp_path, monkeypatch) -> None:
+    """Without a cache_dir, transcribe + flush must leave no cache file under
+    the whole working tree — not merely skip the configured path."""
+    monkeypatch.chdir(tmp_path)
     t, _stub = _transcriber_with_stub_model(None)
 
     t.transcribe(str(_touch(tmp_path / "a.ogg")))
-
-    assert t._cache_path is None
     t.flush_cache()  # must not raise
+
+    assert list(tmp_path.rglob(CACHE_FILE_NAME)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -244,13 +270,15 @@ def test_init_migrates_legacy_cache_file_and_flush_persists_canonical_keys(
     )
 
     # Real __init__ with the whisper model factory stubbed out (no download)
-    monkeypatch.setattr(transcriber_mod, "WhisperModel", lambda *a, **k: _StubModel())
+    model = _StubModel("не должно транскрибироваться")
+    monkeypatch.setattr(transcriber_mod, "WhisperModel", lambda *a, **k: model)
     t = Transcriber(model_size="tiny", device="cpu", cache_dir=export)
 
-    assert t._cache == {
-        str(audio1.resolve()): "старый текст",
-        str(audio2.resolve()): "новый текст",
-    }
+    # Both files resolve against the export root and are served from the
+    # migrated cache: the model is never invoked.
+    assert t.transcribe(str(audio1.resolve())) == "старый текст"
+    assert t.transcribe(str(audio2.resolve())) == "новый текст"
+    assert model.calls == 0
     # loading must not rewrite the file (first flush persists the migration)
     raw = json.loads(cache_file.read_text(encoding="utf-8"))
     assert set(raw) == {legacy_key, relative_key}
