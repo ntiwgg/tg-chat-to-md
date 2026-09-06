@@ -26,13 +26,21 @@ def format_markdown(
     """Convert a stream of messages into a complete Markdown string.
 
     Args:
-        messages: Messages in chronological order.
+        messages: Messages of the chat. Any iteration order is accepted:
+                  ids define the canonical (chronological) order, so the
+                  output bytes never depend on how the caller iterated.
         chat_name: Display name of the chat.
         transcripts: {absolute_file_path: transcribed_text}.
         message_index: {message_id: Message} for resolving reply quotes.
                        If None, replies will lack inline quotes.
     """
     idx = message_index or {}
+
+    # Canonicalize input order: message ids define chronology (the same key
+    # parse_export and merge_exports sort by). Grouping and rendering below
+    # preserve this order, making the output deterministic for any input
+    # permutation — same logical input always yields identical bytes.
+    messages = sorted(messages, key=lambda m: m.id)
 
     # Group by calendar day
     by_date: dict[str, list[Message]] = defaultdict(list)
