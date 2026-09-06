@@ -1,0 +1,621 @@
+{
+  "name": "Пикник у озера",
+  "id": 123456789,
+  "type": "personal_chat",
+  "messages": [
+    {
+      "id": 1,
+      "type": "message",
+      "date": "2026-09-04T09:01:22",
+      "date_unixtime": "1788512482",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "Всем привет! Планируем субботний пикник. Чат вымышленный — это демо-данные без личной информации.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Всем привет! Планируем субботний пикник. Чат вымышленный — это демо-данные без личной информации."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "message",
+      "date": "2026-09-04T09:03:41",
+      "date_unixtime": "1788512621",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": [
+        "Я за. Только давай ",
+        {
+          "type": "bold",
+          "text": "без опозданий"
+        },
+        " — в прошлый раз ждали полчаса."
+      ],
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Я за. Только давай "
+        },
+        {
+          "type": "bold",
+          "text": "без опозданий"
+        },
+        {
+          "type": "plain",
+          "text": " — в прошлый раз ждали полчаса."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "message",
+      "date": "2026-09-04T09:05:07",
+      "date_unixtime": "1788512707",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": [
+        "Согласна! ",
+        {
+          "type": "italic",
+          "text": "Составлю список"
+        },
+        " продуктов, а вы добавляйте своё."
+      ],
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Согласна! "
+        },
+        {
+          "type": "italic",
+          "text": "Составлю список"
+        },
+        {
+          "type": "plain",
+          "text": " продуктов, а вы добавляйте своё."
+        }
+      ],
+      "reply_to_message_id": 1
+    },
+    {
+      "id": 4,
+      "type": "message",
+      "date": "2026-09-04T09:07:30",
+      "date_unixtime": "1788512850",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": [
+        "И подпишитесь на ",
+        {
+          "type": "mention",
+          "text": "@park_news"
+        },
+        " — там пишут о закрытии дорожек."
+      ],
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "И подпишитесь на "
+        },
+        {
+          "type": "mention",
+          "text": "@park_news"
+        },
+        {
+          "type": "plain",
+          "text": " — там пишут о закрытии дорожек."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "message",
+      "date": "2026-09-04T09:10:12",
+      "date_unixtime": "1788513012",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": [
+        "Если что, мой номер — ",
+        {
+          "type": "phone",
+          "text": "+7 900 123-45-67"
+        },
+        ", тег для общих фото — ",
+        {
+          "type": "hashtag",
+          "text": "#пикник2026"
+        },
+        "."
+      ],
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Если что, мой номер — "
+        },
+        {
+          "type": "phone",
+          "text": "+7 900 123-45-67"
+        },
+        {
+          "type": "plain",
+          "text": ", тег для общих фото — "
+        },
+        {
+          "type": "hashtag",
+          "text": "#пикник2026"
+        },
+        {
+          "type": "plain",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "service",
+      "date": "2026-09-04T09:12:05",
+      "date_unixtime": "1788513125",
+      "actor": "Борис",
+      "actor_id": "user102",
+      "action": "phone_call",
+      "text": "",
+      "text_entities": [],
+      "discard_reason": "hangup",
+      "duration_seconds": 43
+    },
+    {
+      "id": 7,
+      "type": "message",
+      "date": "2026-09-04T09:15:40",
+      "date_unixtime": "1788513340",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": "",
+      "text_entities": [],
+      "media_type": "sticker",
+      "sticker_emoji": "👋",
+      "file_name": "AnimatedSticker.tgs",
+      "mime_type": "application/x-tgsticker",
+      "file": "(File not included. Change data exporting settings to download.)"
+    },
+    {
+      "id": 8,
+      "type": "message",
+      "date": "2026-09-04T09:18:23",
+      "date_unixtime": "1788513503",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "",
+      "text_entities": [],
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "photo_file_size": 48231,
+      "width": 1280,
+      "height": 960
+    },
+    {
+      "id": 9,
+      "type": "message",
+      "date": "2026-09-04T09:21:47",
+      "date_unixtime": "1788513707",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "",
+      "text_entities": [],
+      "media_type": "voice_message",
+      "duration_seconds": 14,
+      "mime_type": "audio/ogg",
+      "file": "(File not included. Change data exporting settings to download.)"
+    },
+    {
+      "id": 10,
+      "type": "message",
+      "date": "2026-09-04T09:22:58",
+      "date_unixtime": "1788513778",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": "Голосовое не открылось — аудиофайлы в демо не храним. Ок?",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Голосовое не открылось — аудиофайлы в демо не храним. Ок?"
+        }
+      ],
+      "reply_to_message_id": 9
+    },
+    {
+      "id": 11,
+      "type": "service",
+      "date": "2026-09-04T09:30:02",
+      "date_unixtime": "1788514202",
+      "actor": "Вера",
+      "actor_id": "user103",
+      "action": "pin_message",
+      "text": "",
+      "text_entities": [],
+      "message_id": 2
+    },
+    {
+      "id": 12,
+      "type": "message",
+      "date": "2026-09-04T09:45:36",
+      "date_unixtime": "1788515136",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "",
+      "text_entities": [],
+      "media_type": "video_message",
+      "duration_seconds": 9,
+      "mime_type": "video/mp4",
+      "file": "(File unavailable, please try again later)"
+    },
+    {
+      "id": 13,
+      "type": "message",
+      "date": "2026-09-05T10:02:11",
+      "date_unixtime": "1788602531",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "Чек-лист на субботу:\n\n1. Плед и термос — беру я\n2. Бутерброды, вода и сок — Борис\n3. Фрукты, салфетки и одноразовая посуда — Вера\n4. Портативная колонка — принесу, если успею зарядить\n5. Аптечка, пластырь и спрей от комаров — кто-нибудь, пожалуйста\n6. Пакеты для мусора — самое важное, не забыть!\n\nДописывайте, что упустила, и до встречи!",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Чек-лист на субботу:\n\n1. Плед и термос — беру я\n2. Бутерброды, вода и сок — Борис\n3. Фрукты, салфетки и одноразовая посуда — Вера\n4. Портативная колонка — принесу, если успею зарядить\n5. Аптечка, пластырь и спрей от комаров — кто-нибудь, пожалуйста\n6. Пакеты для мусора — самое важное, не забыть!\n\nДописывайте, что упустила, и до встречи!"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "message",
+      "date": "2026-09-05T10:15:44",
+      "date_unixtime": "1788603344",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": "Плед и термос записал. Заодно гляну прогноз — к вечеру вроде похолодает.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Плед и термос записал. Заодно гляну прогноз — к вечеру вроде похолодает."
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "message",
+      "date": "2026-09-05T10:17:03",
+      "date_unixtime": "1788603423",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "Полезный пост: мусор после пикника забираем с собой, а костры жечь только в отведённых местах.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Полезный пост: мусор после пикника забираем с собой, а костры жечь только в отведённых местах."
+        }
+      ],
+      "forwarded_from": "Лес и парк",
+      "forwarded_from_id": "channel1234567890"
+    },
+    {
+      "id": 16,
+      "type": "message",
+      "date": "2026-09-05T10:20:30",
+      "date_unixtime": "1788603630",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "Список готов! Встречаемся в 11:30 у входа в парк.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Список готов! Встречаемся в 11:30 у входа в парк."
+        }
+      ],
+      "reactions": [
+        {
+          "type": "emoji",
+          "count": 5,
+          "emoji": "👍",
+          "recent": [
+            {
+              "from": "Борис",
+              "from_id": "user102",
+              "date": "2026-09-05T10:21:00"
+            },
+            {
+              "from": "Вера",
+              "from_id": "user103",
+              "date": "2026-09-05T10:21:30"
+            },
+            {
+              "from": "Дима",
+              "from_id": "user201",
+              "date": "2026-09-05T10:22:00"
+            },
+            {
+              "from": "Оля",
+              "from_id": "user202",
+              "date": "2026-09-05T10:23:15"
+            },
+            {
+              "from": "Катя",
+              "from_id": "user203",
+              "date": "2026-09-05T10:24:40"
+            }
+          ]
+        },
+        {
+          "type": "emoji",
+          "count": 4,
+          "emoji": "❤",
+          "recent": [
+            {
+              "from": "Дима",
+              "from_id": "user201",
+              "date": "2026-09-05T10:22:00"
+            },
+            {
+              "from": "Оля",
+              "from_id": "user202",
+              "date": "2026-09-05T10:23:15"
+            }
+          ]
+        },
+        {
+          "type": "emoji",
+          "count": 1,
+          "emoji": "🎉",
+          "recent": [
+            {
+              "from": "Борис",
+              "from_id": "user102",
+              "date": "2026-09-05T10:21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "type": "service",
+      "date": "2026-09-05T10:45:12",
+      "date_unixtime": "1788605112",
+      "actor": "Аня",
+      "actor_id": "user101",
+      "action": "phone_call",
+      "text": "",
+      "text_entities": [],
+      "discard_reason": "missed"
+    },
+    {
+      "id": 18,
+      "type": "message",
+      "date": "2026-09-05T11:02:33",
+      "date_unixtime": "1788606153",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "",
+      "text_entities": [],
+      "file_name": "Чек-лист_пикника.pdf",
+      "file": "(File not included. Change data exporting settings to download.)"
+    },
+    {
+      "id": 19,
+      "type": "message",
+      "date": "2026-09-05T11:05:19",
+      "date_unixtime": "1788606319",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "А это ответ на сообщение, которого нет в выгрузке, — так бывает после удаления.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "А это ответ на сообщение, которого нет в выгрузке, — так бывает после удаления."
+        }
+      ],
+      "reply_to_message_id": 9999
+    },
+    {
+      "id": 20,
+      "type": "message",
+      "date": "2026-09-05T11:30:01",
+      "date_unixtime": "1788607801",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": "",
+      "text_entities": [],
+      "media_type": "video_file",
+      "file_name": "сборы_за_пять_минут.mp4",
+      "duration_seconds": 47,
+      "mime_type": "video/mp4",
+      "file": "(File not included. Change data exporting settings to download.)"
+    },
+    {
+      "id": 21,
+      "type": "message",
+      "date": "2026-09-05T12:00:00",
+      "date_unixtime": "1788609600",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "",
+      "text_entities": []
+    },
+    {
+      "id": 22,
+      "type": "message",
+      "date": "2026-09-06T09:02:15",
+      "date_unixtime": "1788685335",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "Перечитала чек-лист — всё учтено, выезжаем в 10:30.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Перечитала чек-лист — всё учтено, выезжаем в 10:30."
+        }
+      ],
+      "reply_to_message_id": 13
+    },
+    {
+      "id": 23,
+      "type": "message",
+      "date": "2026-09-06T09:05:41",
+      "date_unixtime": "1788685541",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": [
+        {
+          "type": "blockquote",
+          "text": "После 18:00 ожидается дождь"
+        },
+        " — так пишут в прогнозе, зонты с собой."
+      ],
+      "text_entities": [
+        {
+          "type": "blockquote",
+          "text": "После 18:00 ожидается дождь"
+        },
+        {
+          "type": "plain",
+          "text": " — так пишут в прогнозе, зонты с собой."
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "message",
+      "date": "2026-09-06T09:10:33",
+      "date_unixtime": "1788685833",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "Фото и видео выложу в общий альбом вечером.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Фото и видео выложу в общий альбом вечером."
+        }
+      ],
+      "edited": "2026-09-06T09:11:02",
+      "edited_unixtime": "1788685862",
+      "reactions": [
+        {
+          "type": "emoji",
+          "count": 1,
+          "emoji": "🌚",
+          "recent": [
+            {
+              "from": "Борис",
+              "from_id": "user102",
+              "date": "2026-09-06T09:12:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "message",
+      "date": "2026-09-06T09:12:48",
+      "date_unixtime": "1788685968",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "Проверка экранирования: *звёздочки* и [квадратные скобки], а ещё _подчёркивания_ — разметку не ломают.",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Проверка экранирования: *звёздочки* и [квадратные скобки], а ещё _подчёркивания_ — разметку не ломают."
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "message",
+      "date": "2026-09-06T09:20:10",
+      "date_unixtime": "1788686410",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": [
+        "Прогноз всё-таки обещает солнце — смотри: ",
+        {
+          "type": "link",
+          "text": "https://example.com/weather"
+        },
+        "."
+      ],
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Прогноз всё-таки обещает солнце — смотри: "
+        },
+        {
+          "type": "link",
+          "text": "https://example.com/weather"
+        },
+        {
+          "type": "plain",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "message",
+      "date": "2026-09-06T09:25:00",
+      "date_unixtime": "1788686700",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "Тогда встречаемся в 11:30 и ни шагу назад!",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Тогда встречаемся в 11:30 и ни шагу назад!"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "message",
+      "date": "2026-09-06T09:35:12",
+      "date_unixtime": "1788687312",
+      "from": "Аня",
+      "from_id": "user101",
+      "text": "",
+      "text_entities": [],
+      "media_type": "animation",
+      "file_name": "piknik.gif",
+      "mime_type": "video/mp4",
+      "file": "(File not included. Change data exporting settings to download.)"
+    },
+    {
+      "id": 29,
+      "type": "message",
+      "date": "2026-09-06T09:40:00",
+      "date_unixtime": "1788687600",
+      "from": "Борис",
+      "from_id": "user102",
+      "text": "Вот это настроение для субботы!",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Вот это настроение для субботы!"
+        }
+      ],
+      "reply_to_message_id": 28
+    },
+    {
+      "id": 30,
+      "type": "message",
+      "date": "2026-09-06T09:45:55",
+      "date_unixtime": "1788687955",
+      "from": "Вера",
+      "from_id": "user103",
+      "text": "Всем спасибо, увидимся у парка!",
+      "text_entities": [
+        {
+          "type": "plain",
+          "text": "Всем спасибо, увидимся у парка!"
+        }
+      ]
+    }
+  ]
+}
